@@ -3,6 +3,7 @@
 
 ## Getting Started
 cd NystagmusApp
+
 npx react-native run-ios
 
 ## Issue Log
