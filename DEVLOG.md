@@ -45,3 +45,14 @@
 **Result:** ✅ Live front camera working on iPhone
 
 ---
+
+## Issue 3 - Add Crosshair Overlay
+**Date:** May 15, 2026
+**Status:** ✅ Closed
+
+**What I did:**
+- Added two gray lines on top of camera feed
+- Vertical line at 50% of screen width
+- Horizontal line at 50% of screen height
+
+**Result:** ✅ Gray crosshair lines dividing screen into 4 equal parts
