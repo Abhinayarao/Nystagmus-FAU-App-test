@@ -48,6 +48,7 @@
 
 ## Issue 3 - Add Crosshair Overlay
 **Date:** May 15, 2026
+
 **Status:** ✅ Closed
 
 **What I did:**
