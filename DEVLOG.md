@@ -4,6 +4,7 @@
 
 ## Issue 1 - Set up React Native Project
 **Date:** May 13, 2026
+
 **Status:** ✅ Closed
 
 **What I did:**
@@ -25,6 +26,7 @@
 
 ## Issue 2 - Live Camera Feed
 **Date:** May 15, 2026
+
 **Status:** ✅ Closed
 
 **What I did:**
