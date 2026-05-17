@@ -89,20 +89,20 @@ Decision: Started with FastAPI backend approach to get it working first. On-devi
 - useFrameProcessor hook was removed
 - Replaced with a new system called useFrameOutput which is more complex and poorly documented
 - Most tutorials and examples online are written for v4 (we can explore Vision Camera v5’s new useFrameOutput API once the documentation improves)
-
+```tsx
 // Vision Camera v5 frame processor attempt
 const frameProcessor = useFrameProcessor((frame) => {
   'worklet';
   runOnJS(sendFrameToBackend)(frame.toString());
 }, [sendFrameToBackend]);
-
+```
 **Downgraded to Vision Camera v4**
 
 - v4 has useFrameProcessor which is well documented
 - Tried two approaches to send frames to backend from frame processor
 - Both failed due to plugin compatibility issues
 - Frame processor worklet thread cannot directly call fetch to backend
-
+```tsx
 // vision-camera-base64 attempt
 import { toBase64 } from 'vision-camera-base64';
 const frameProcessor = useFrameProcessor((frame) => {
@@ -110,4 +110,7 @@ const frameProcessor = useFrameProcessor((frame) => {
   const base64 = toBase64(frame);
   runOnJS(sendFrameToBackend)(base64);
 }, [sendFrameToBackend]);
+```
+**What worked: takePhoto() every 200ms**
+
 
