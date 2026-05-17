@@ -57,3 +57,57 @@
 - Horizontal line at 50% of screen height
 
 **Result:** ✅ Gray crosshair lines dividing screen into 4 equal parts
+
+## Issue 3 - Eye distance calculation
+
+### Implement real-time eye distance Using Fast API
+
+**The real-time eye distance was calculated Using Fast API**
+
+MediaPipe does not have a stable mobile SDK for React Native. so Two options were considered:
+**Option 1 - On-device processing**
+
+- Run MediaPipe directly on iPhone
+- Complex native setup
+- Limited React Native support
+
+
+Option 2 - FastAPI Python backend
+
+- MediaPipe already written and tested in Python
+- No rewriting needed
+- Easier to debug and validate against results
+- Backend can be deployed to cloud (AWS) later
+
+Decision: Started with FastAPI backend approach to get it working first. On-device processing can be explored later for offline/telemedicine use where internet may not be available.
+
+**Vision Camera Version Journey:**
+
+**Started with Vision Camera v5 (latest)**
+- Installed v5 thinking latest = best
+- v5 completely redesigned the frame processor API
+- useFrameProcessor hook was removed
+- Replaced with a new system called useFrameOutput which is more complex and poorly documented
+- Most tutorials and examples online are written for v4 (we can explore Vision Camera v5’s new useFrameOutput API once the documentation improves)
+
+// Vision Camera v5 frame processor attempt
+const frameProcessor = useFrameProcessor((frame) => {
+  'worklet';
+  runOnJS(sendFrameToBackend)(frame.toString());
+}, [sendFrameToBackend]);
+
+**Downgraded to Vision Camera v4**
+
+- v4 has useFrameProcessor which is well documented
+- Tried two approaches to send frames to backend from frame processor
+- Both failed due to plugin compatibility issues
+- Frame processor worklet thread cannot directly call fetch to backend
+
+// vision-camera-base64 attempt
+import { toBase64 } from 'vision-camera-base64';
+const frameProcessor = useFrameProcessor((frame) => {
+  'worklet';
+  const base64 = toBase64(frame);
+  runOnJS(sendFrameToBackend)(base64);
+}, [sendFrameToBackend]);
+
