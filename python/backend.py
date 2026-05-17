@@ -62,12 +62,33 @@ async def process_frame(file: UploadFile = File(...)):
     R_center = R_iris.mean(axis=0)
     R_dist_cm = (REAL_IRIS_DIAMETER_MM * FOCAL_LENGTH_PIXELS /
                  max(np.linalg.norm(R_iris[0] - R_iris[2]), 1)) / 10
+    
+    # Eye horizontal centers
+    L_eye_poly = np.array([p(i) for i in LEFT_EYE])
+    R_eye_poly = np.array([p(i) for i in RIGHT_EYE])
+
+    L_eye_horiz_center = (L_eye_poly[:, 0].min() + L_eye_poly[:, 0].max()) / 2
+    R_eye_horiz_center = (R_eye_poly[:, 0].min() + R_eye_poly[:, 0].max()) / 2
+
+    # Offsets from screen center
+    dx_L = L_eye_horiz_center - CENTER_X
+    dx_R = R_eye_horiz_center - CENTER_X
+    dy_L = L_center[1] - CENTER_Y
+    dy_R = R_center[1] - CENTER_Y
+
+    # Centering scores
+    residual_dx = dx_L + dx_R
+    horiz_pct = max(0, 100 * (1 - abs(residual_dx) / (w / 2)))
+    vert_dev = (abs(dy_L) + abs(dy_R)) / 2
+    vert_pct = max(0, 100 * (1 - vert_dev / (h / 2)))
 
     return {
     "face_detected": True,
     "left_eye_distance": round(L_dist_cm, 2),
     "right_eye_distance": round(R_dist_cm, 2),
-}
+    "horiz_pct": round(horiz_pct, 1),
+    "vert_pct": round(vert_pct, 1),
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

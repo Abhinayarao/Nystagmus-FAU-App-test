@@ -1,33 +1,36 @@
-import React from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  PermissionsAndroid,
-  Platform,
-} from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-} from 'react-native-vision-camera';
+/**
+ * Sample React Native App
+ * https://github.com/facebook/react-native
+ *
+ * @format
+ */
 
-function App(): React.JSX.Element {
-  const device = useCameraDevice('front');
+import { NewAppScreen } from '@react-native/new-app-screen';
+import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
-  if (device == null) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.text}>No camera found</Text>
-      </View>
-    );
-  }
+function App() {
+  const isDarkMode = useColorScheme() === 'dark';
+
+  return (
+    <SafeAreaProvider>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent() {
+  const safeAreaInsets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={true}
+      <NewAppScreen
+        templateFileName="App.tsx"
+        safeAreaInsets={safeAreaInsets}
       />
     </View>
   );
@@ -36,13 +39,6 @@ function App(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'red',
-  },
-  text: {
-    color: 'white',
-    fontSize: 20,
-    textAlign: 'center',
-    marginTop: 100,
   },
 });
 
