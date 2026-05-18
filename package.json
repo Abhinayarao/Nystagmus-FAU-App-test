@@ -10,10 +10,16 @@
     "test": "jest"
   },
   "dependencies": {
+    "@mediapipe/face_mesh": "^0.4.1633559619",
+    "@react-native/new-app-screen": "0.85.3",
     "react": "19.2.3",
     "react-native": "0.85.3",
-    "@react-native/new-app-screen": "0.85.3",
-    "react-native-safe-area-context": "^5.5.2"
+    "react-native-nitro-image": "^0.14.0",
+    "react-native-nitro-modules": "^0.35.6",
+    "react-native-safe-area-context": "^5.5.2",
+    "react-native-svg": "^15.15.5",
+    "react-native-vision-camera": "^4.7.3",
+    "react-native-worklets-core": "^1.6.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
