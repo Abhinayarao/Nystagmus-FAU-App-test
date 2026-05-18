@@ -56,12 +56,14 @@ async def process_frame(file: UploadFile = File(...)):
     L_center = L_iris.mean(axis=0)
     L_dist_cm = (REAL_IRIS_DIAMETER_MM * FOCAL_LENGTH_PIXELS /
                  max(np.linalg.norm(L_iris[0] - L_iris[2]), 1)) / 10
+    L_radius = np.mean([np.linalg.norm(pt - L_center) for pt in L_iris])
     
     # Right eye calculations
     R_iris = np.array([p(i) for i in RIGHT_IRIS])
     R_center = R_iris.mean(axis=0)
     R_dist_cm = (REAL_IRIS_DIAMETER_MM * FOCAL_LENGTH_PIXELS /
                  max(np.linalg.norm(R_iris[0] - R_iris[2]), 1)) / 10
+    R_radius = np.mean([np.linalg.norm(pt - R_center) for pt in R_iris])
     
     # Eye horizontal centers
     L_eye_poly = np.array([p(i) for i in LEFT_EYE])
@@ -88,6 +90,14 @@ async def process_frame(file: UploadFile = File(...)):
     "right_eye_distance": round(R_dist_cm, 2),
     "horiz_pct": round(horiz_pct, 1),
     "vert_pct": round(vert_pct, 1),
+    "left_iris_center": L_center.tolist(),
+    "left_iris_radius": float(L_radius),
+    "right_iris_center": R_center.tolist(),
+    "right_iris_radius": float(R_radius),
+    "left_eye_poly": L_eye_poly.tolist(),
+    "right_eye_poly": R_eye_poly.tolist(),
+    "frame_width": w,
+    "frame_height": h,
     }
 
 if __name__ == "__main__":
