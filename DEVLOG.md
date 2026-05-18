@@ -58,7 +58,7 @@
 
 **Result:** ✅ Gray crosshair lines dividing screen into 4 equal parts
 
-## Issue 3 - Eye distance calculation
+## Issue 4 - Eye distance calculation
 
 ### Implement real-time eye distance Using Fast API
 
