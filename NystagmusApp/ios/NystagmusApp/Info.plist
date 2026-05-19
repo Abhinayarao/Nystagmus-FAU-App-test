@@ -9,9 +9,11 @@
 	<key>CFBundleDisplayName</key>
 	<string>NystagmusApp</string>
 	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to detect eye movements for nystagmus </string>
+	<key>CFBundleIconFile</key>
 	<string></string>
 	<key>LSApplicationCategoryType</key>
-	<string>This app needs camera access to detect eye movements for nystagmus diagnosis</string>
+	<string></string>
 	<key>CFBundleGetInfoString</key>
 	<string></string>
 	<key>CFBundleExecutable</key>
@@ -41,6 +43,12 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to save recorded videos to your camera roll</string>
+	<key></key>
+	<array>
+		<string></string>
+	</array>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -62,5 +70,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>NSHumanReadableCopyright</key>
+	<string></string>
 </dict>
 </plist>
