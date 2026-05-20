@@ -113,4 +113,77 @@ const frameProcessor = useFrameProcessor((frame) => {
 ```
 **What worked: takePhoto() every 200ms**
 
+## Issue 6 - Real Time Tracking, Overlay Scaling
+**Date:** May 18, 2026
+
+**Status:** ✅ Closed
+
+### 1. Real Time Tracking Interval
+**What I did:**
+Tested capture intervals from 200ms down to 25ms.
+
+**Result:** 25ms works stably without errors. The `isCapturing` flag prevents overlapping captures.
+
+**Key finding:**
+MediaPipe backend processing time is only ~10ms. The real bottleneck is network round trip (~300-400ms). Going below 25ms doesn't improve perceived speed since the `isCapturing` flag skips frames when backend is busy.
+(See screenshot in Issue 6 for backend timing results)
+
+**Conclusion:** On-device MediaPipe would eliminate network bottleneck entirely and give true 30fps tracking.
+
+---
+
+### 2. Eye Overlay Size Mismatch (iOS & Android)
+**Problem:**
+Eye overlays appeared smaller and misaligned compared to actual eye position.
+
+**Root Cause:**
+Resolution mismatch between camera frame and screen:
+
+| Platform  | Frame Size | Screen Size|
+|-----------|------------|------------|
+| iOS       | 2268 × 4032| 430 × 932  |
+| Android   | 1728 × 2304| 360 × 720  |
+
+**What failed:**
+- Hardcoded iOS frame dimensions — broke on Android
+- Simple width/height ratio scaling — ignored aspect ratio mismatch
+
+**What worked:**
+Dynamic scaling using frame dimensions returned by backend. Calculated scale and offset based on actual frame vs screen aspect ratio using "cover" mode logic.
+
+**Result:** ✅ Eye overlays correctly aligned on both iOS and Android
+
+---
+
+### 4. Android Support
+**What I did:**
+
+- Added camera permissions to AndroidManifest.xml
+- Added runtime permission request for Android
+- Fixed backend URL for Android device
+- Tested on Realme 7 physical device
+
+**Result:** ✅ App running on Android with eye tracking working
+
+---
+
+### 5. Frame Resize Optimization
+**What I did:**
+Resized frame to 640×480 before MediaPipe processing on backend.
+
+**Result:**
+- MediaPipe processing: ~10ms ✅
+- No improvement in perceived speed — bottleneck is network not processing
+
+---
+
+### 6. Video Recording
+**What I did:**
+- Added record button using Vision Camera's startRecording()
+- Raw camera feed saved to camera roll — no overlays in recorded video
+- SVG overlays are React Native UI elements — don't appear in native video recording
+- Added camera flip button
+- Fixed conflict between takePhoto() and startRecording()
+
+**Result:** ✅ Clean video recording without overlays on both iOS and Android
 
