@@ -4,6 +4,7 @@ import mediapipe as mp
 import numpy as np
 import cv2
 
+
 REAL_IRIS_DIAMETER_MM = 11.8
 FOCAL_LENGTH_PIXELS = 1000
 
@@ -27,48 +28,47 @@ app = FastAPI()
 def health_check():
     return {"status": "server is running"}
 
-
-
 @app.post("/process_frame")
 async def process_frame(file: UploadFile = File(...)):
-    # Read the image from the request
     contents = await file.read()
     nparr = np.frombuffer(contents, np.uint8)
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
+    h_orig, w_orig = frame.shape[:2]
+
+    # Resize for faster MediaPipe processing
+    frame = cv2.resize(frame, (640, 480))
     h, w = frame.shape[:2]
-    CENTER_X = w / 2
-    CENTER_Y = h / 2
-    
+    CENTER_X = w_orig / 2
+    CENTER_Y = h_orig / 2
+
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb)
-    
+
     if not results.multi_face_landmarks:
         return {"face_detected": False}
-    
+
     lm = results.multi_face_landmarks[0].landmark
-    
+
     def p(idx):
-        return np.array([lm[idx].x * w, lm[idx].y * h])
-    
+        return np.array([lm[idx].x * w_orig, lm[idx].y * h_orig])
+
     # Left eye calculations
     L_iris = np.array([p(i) for i in LEFT_IRIS])
     L_center = L_iris.mean(axis=0)
+    L_radius = np.mean([np.linalg.norm(pt - L_center) for pt in L_iris])
     L_dist_cm = (REAL_IRIS_DIAMETER_MM * FOCAL_LENGTH_PIXELS /
                  max(np.linalg.norm(L_iris[0] - L_iris[2]), 1)) / 10
-    L_radius = np.mean([np.linalg.norm(pt - L_center) for pt in L_iris])
-    
+
     # Right eye calculations
     R_iris = np.array([p(i) for i in RIGHT_IRIS])
     R_center = R_iris.mean(axis=0)
+    R_radius = np.mean([np.linalg.norm(pt - R_center) for pt in R_iris])
     R_dist_cm = (REAL_IRIS_DIAMETER_MM * FOCAL_LENGTH_PIXELS /
                  max(np.linalg.norm(R_iris[0] - R_iris[2]), 1)) / 10
-    R_radius = np.mean([np.linalg.norm(pt - R_center) for pt in R_iris])
-    
+
     # Eye horizontal centers
     L_eye_poly = np.array([p(i) for i in LEFT_EYE])
     R_eye_poly = np.array([p(i) for i in RIGHT_EYE])
-
     L_eye_horiz_center = (L_eye_poly[:, 0].min() + L_eye_poly[:, 0].max()) / 2
     R_eye_horiz_center = (R_eye_poly[:, 0].min() + R_eye_poly[:, 0].max()) / 2
 
@@ -80,24 +80,24 @@ async def process_frame(file: UploadFile = File(...)):
 
     # Centering scores
     residual_dx = dx_L + dx_R
-    horiz_pct = max(0, 100 * (1 - abs(residual_dx) / (w / 2)))
+    horiz_pct = max(0, 100 * (1 - abs(residual_dx) / (w_orig / 2)))
     vert_dev = (abs(dy_L) + abs(dy_R)) / 2
-    vert_pct = max(0, 100 * (1 - vert_dev / (h / 2)))
+    vert_pct = max(0, 100 * (1 - vert_dev / (h_orig / 2)))
 
     return {
-    "face_detected": True,
-    "left_eye_distance": round(L_dist_cm, 2),
-    "right_eye_distance": round(R_dist_cm, 2),
-    "horiz_pct": round(horiz_pct, 1),
-    "vert_pct": round(vert_pct, 1),
-    "left_iris_center": L_center.tolist(),
-    "left_iris_radius": float(L_radius),
-    "right_iris_center": R_center.tolist(),
-    "right_iris_radius": float(R_radius),
-    "left_eye_poly": L_eye_poly.tolist(),
-    "right_eye_poly": R_eye_poly.tolist(),
-    "frame_width": w,
-    "frame_height": h,
+        "face_detected": True,
+        "left_eye_distance": round(L_dist_cm, 2),
+        "right_eye_distance": round(R_dist_cm, 2),
+        "horiz_pct": round(horiz_pct, 1),
+        "vert_pct": round(vert_pct, 1),
+        "left_iris_center": L_center.tolist(),
+        "left_iris_radius": float(L_radius),
+        "right_iris_center": R_center.tolist(),
+        "right_iris_radius": float(R_radius),
+        "left_eye_poly": L_eye_poly.tolist(),
+        "right_eye_poly": R_eye_poly.tolist(),
+        "frame_width": w_orig,
+        "frame_height": h_orig,
     }
 
 if __name__ == "__main__":

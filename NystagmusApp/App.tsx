@@ -60,22 +60,22 @@ const captureAndSend = useCallback(async () => {
 // Start video recording
 const startRecording = useCallback(() => {
   if (camera.current == null) return;
+  isCapturing.current = true; // Pause photo capture
   setIsRecording(true);
   camera.current.startRecording({
     onRecordingFinished: async (video) => {
-  try {
-    console.log('Video path:', video.path);
-    await CameraRoll.saveAsset(`file://${video.path}`, { type: 'video' });
-    Alert.alert('Video Saved', 'Video has been saved to your camera roll!');
-  } catch (error) {
-    console.log('Save error details:', JSON.stringify(error));
-    Alert.alert('Error', `Failed to save video: ${JSON.stringify(error)}`);
-  }
-  setIsRecording(false);
-
+      try {
+        await CameraRoll.saveAsset(`file://${video.path}`, { type: 'video' });
+        Alert.alert('Video Saved', 'Video has been saved to your camera roll!');
+      } catch (error) {
+        Alert.alert('Error', `Failed to save video: ${JSON.stringify(error)}`);
+      }
+      isCapturing.current = false; // Resume photo capture
+      setIsRecording(false);
     },
     onRecordingError: (error) => {
       console.log('Recording error:', error);
+      isCapturing.current = false; // Resume photo capture
       setIsRecording(false);
     },
   });
@@ -111,7 +111,7 @@ useEffect(() => {
 useEffect(() => {
   const interval = setInterval(() => {
     captureAndSend();
-  }, 200);
+  }, 25);
   return () => clearInterval(interval);
 }, [captureAndSend]);
 
