@@ -1,5 +1,5 @@
 import React, {useEffect, useState, useRef, useCallback} from 'react';
-import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert} from 'react-native';
+import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert, PermissionsAndroid, Platform} from 'react-native';
 import {
   Camera,
   useCameraDevice,
@@ -10,23 +10,7 @@ import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 // Calculate scale and offset to match camera preview with overlay
-const frameAspect = 2268 / 4032;
-const screenAspect = screenWidth / screenHeight;
 
-let scaleX: number;
-let scaleY: number;
-let offsetX = 0;
-let offsetY = 0;
-
-if (screenAspect > frameAspect) {
-  scaleX = screenWidth / 2268;
-  scaleY = scaleX;
-  offsetY = (screenHeight - 4032 * scaleY) / 2;
-} else {
-  scaleY = screenHeight / 4032;
-  scaleX = scaleY;
-  offsetX = (screenWidth - 2268 * scaleX) / 2;
-}
 
 const BACKEND_URL = 'http://10.0.0.36:8000/process_frame';
 
@@ -60,10 +44,12 @@ const captureAndSend = useCallback(async () => {
       method: 'POST',
       body: formData,
     });
-    const data = await response.json();
-    console.log('Frame size:', data.frame_width, data.frame_height);
-    console.log('Screen size:', screenWidth, screenHeight);
-    setEyeData(data);
+
+      const data = await response.json();
+      console.log('Frame size:', data.frame_width, data.frame_height);
+      console.log('Screen size:', screenWidth, screenHeight);
+      setEyeData(data);
+
   } catch (error) {
     console.log('Capture error:', error);
   } finally {
@@ -107,6 +93,20 @@ useEffect(() => {
   requestPermission();
 }, []);
 
+useEffect(() => {
+  if (Platform.OS === 'android') {
+    PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      {
+        title: 'Camera Permission',
+        message: 'NystagmusApp needs access to your camera',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      }
+    );
+  }
+}, []);
+
 //Takes a photo every 500ms and sends to backend
 useEffect(() => {
   const interval = setInterval(() => {
@@ -132,6 +132,27 @@ useEffect(() => {
     );
   }
   
+const frameW = eyeData?.frame_width ?? 2268;
+const frameH = eyeData?.frame_height ?? 4032;
+const frameAspect = frameW / frameH;
+const screenAspect = screenWidth / screenHeight;
+
+let scaleX: number;
+let scaleY: number;
+let offsetX = 0;
+let offsetY = 0;
+
+if (screenAspect > frameAspect) {
+  scaleX = screenWidth / frameW;
+  scaleY = scaleX;
+  offsetY = (screenHeight - frameH * scaleY) / 2;
+} else {
+  scaleY = screenHeight / frameH;
+  scaleX = scaleY;
+  offsetX = (screenWidth - frameW * scaleX) / 2;
+}
+
+
   return (
     <View style={styles.container}>
       <Camera
