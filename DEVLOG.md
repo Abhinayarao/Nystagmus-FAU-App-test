@@ -187,3 +187,15 @@ Resized frame to 640×480 before MediaPipe processing on backend.
 
 **Result:** ✅ Clean video recording without overlays on both iOS and Android
 
+## Issue 7 - Beat Analysis Feature
+**Date:** May 27, 2026
+**Status:** ✅ Complete
+
+**What I did:**
+- After recording stops, 4 buttons appear: Left Beat, Right Beat, Up Beat, Down Beat
+- Tapping a button sends the recorded video to backend
+- Backend runs the corresponding Python script and replaces hardcoded `video_path` with actual recorded video path
+- Added `matplotlib.use('Agg')` to disable interactive display — was causing script timeouts
+- SPV graph returned as base64 PNG and displayed full screen in app
+- Eye overlays and camera capture pause during analysis and graph display
+- Close button (✕) to return to camera view after viewing graph

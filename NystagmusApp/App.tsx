@@ -1,5 +1,5 @@
 import React, {useEffect, useState, useRef, useCallback} from 'react';
-import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert, PermissionsAndroid, Platform} from 'react-native';
+import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert, PermissionsAndroid, Platform, Image, Animated} from 'react-native';
 import {
   Camera,
   useCameraDevice,
@@ -22,8 +22,12 @@ const [cameraPosition, setCameraPosition] = useState<'front' | 'back'>('front');
 const device = useCameraDevice(cameraPosition);
 const camera = useRef<Camera>(null);
 const isCapturing = useRef(false);
-const [eyeData, setEyeData] = useState(null);
+const [eyeData, setEyeData] = useState<any>(null);
 const [isRecording, setIsRecording] = useState(false);
+const [spvGraph, setSpvGraph] = useState<string | null>(null);
+const [isAnalyzing, setIsAnalyzing] = useState(false);
+const [recordedVideoPath, setRecordedVideoPath] = useState<string | null>(null);
+const progressAnim = useRef(new Animated.Value(0)).current;
 
 // Returns: eye distances, centering scores, iris positions
 const captureAndSend = useCallback(async () => {
@@ -60,26 +64,67 @@ const captureAndSend = useCallback(async () => {
 // Start video recording
 const startRecording = useCallback(() => {
   if (camera.current == null) return;
-  isCapturing.current = true; // Pause photo capture
+  isCapturing.current = true;
   setIsRecording(true);
   camera.current.startRecording({
     onRecordingFinished: async (video) => {
       try {
         await CameraRoll.saveAsset(`file://${video.path}`, { type: 'video' });
-        Alert.alert('Video Saved', 'Video has been saved to your camera roll!');
+        setRecordedVideoPath(video.path);
       } catch (error) {
         Alert.alert('Error', `Failed to save video: ${JSON.stringify(error)}`);
       }
-      isCapturing.current = false; // Resume photo capture
+      isCapturing.current = false;
       setIsRecording(false);
     },
     onRecordingError: (error) => {
       console.log('Recording error:', error);
-      isCapturing.current = false; // Resume photo capture
+      isCapturing.current = false;
       setIsRecording(false);
     },
   });
 }, []);
+
+// Send recorded video to backend for SPV analysis
+const analyzeVideo = useCallback(async (beatType: string) => {
+  if (!recordedVideoPath) {
+    Alert.alert('Error', 'No recorded video found. Please record first.');
+    return;
+  }
+  setIsAnalyzing(true);
+  setSpvGraph(null);
+  progressAnim.setValue(0);
+  Animated.timing(progressAnim, {
+  toValue: 90,
+  duration: 8000,
+  useNativeDriver: false,
+}).start();
+  try {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: `file://${recordedVideoPath}`,
+      type: 'video/mp4',
+      name: 'recording.mp4',
+    } as any);
+    formData.append('beat_type', beatType);
+    const response = await fetch('http://10.0.0.36:8000/analyze', {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await response.json();
+    if (data.success) {
+      setSpvGraph(data.graph);
+    } else {
+      Alert.alert('Error', data.error || 'Analysis failed');
+    }
+  } catch (error) {
+    Alert.alert('Error', `Analysis failed: ${error}`);
+  } finally {
+    setIsAnalyzing(false);
+  }
+}, [recordedVideoPath]);
+
+    
 
 // Stop video recording
 const stopRecording = useCallback(async () => {
@@ -109,11 +154,12 @@ useEffect(() => {
 
 //Takes a photo every 500ms and sends to backend
 useEffect(() => {
+  if (spvGraph) return; // Pause when graph is showing
   const interval = setInterval(() => {
     captureAndSend();
   }, 25);
   return () => clearInterval(interval);
-}, [captureAndSend]);
+}, [captureAndSend, spvGraph]);
 
 //Permission Check
   if (!hasPermission) {
@@ -193,9 +239,84 @@ if (screenAspect > frameAspect) {
   <View style={[styles.recordInner, {backgroundColor: isRecording ? 'white' : 'red'}]} />
   </TouchableOpacity>
 
+  
+  {/* Analyzing overlay - full screen */}
+  {isAnalyzing && (
+  <View style={styles.analyzingOverlay}>
+  
+    <View style={styles.analyzingContainer}>
+      <Text style={styles.analyzingTitle}>Analyzing video...</Text>
+      <View style={styles.progressBarBackground}>
+        <Animated.View style={[styles.progressBarFill, {
+          width: progressAnim.interpolate({
+            inputRange: [0, 90],
+            outputRange: ['0%', '90%'],
+          })
+        }]} />
+      </View>
+      <Text style={styles.analyzingSubtitle}>Detecting eye movements</Text>
+    </View>
+  </View>
+)}
+  {/* Beat analysis buttons - show after recording */}
+{recordedVideoPath && !isRecording && !isAnalyzing && (
+  <View style={styles.beatButtonsContainer}>
+    <TouchableOpacity style={styles.beatButton} onPress={() => analyzeVideo('left')}>
+      <View style={[styles.beatButtonIcon, {backgroundColor: '#1557c0'}]}>
+        <Svg width="14" height="14" viewBox="0 0 14 14">
+          <Path d="M9 2L4 7L9 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </Svg>
+      </View>
+      <Text style={styles.beatButtonText}>Left beat</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.beatButton} onPress={() => analyzeVideo('right')}>
+      <View style={[styles.beatButtonIcon, {backgroundColor: '#1e8e3e'}]}>
+        <Svg width="14" height="14" viewBox="0 0 14 14">
+          <Path d="M5 2L10 7L5 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </Svg>
+      </View>
+      <Text style={styles.beatButtonText}>Right beat</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.beatButton} onPress={() => analyzeVideo('up')}>
+      <View style={[styles.beatButtonIcon, {backgroundColor: '#e37400'}]}>
+        <Svg width="14" height="14" viewBox="0 0 14 14">
+          <Path d="M2 9L7 4L12 9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </Svg>
+      </View>
+      <Text style={styles.beatButtonText}>Up beat</Text>
+    </TouchableOpacity>
+    <TouchableOpacity style={styles.beatButton} onPress={() => analyzeVideo('down')}>
+      <View style={[styles.beatButtonIcon, {backgroundColor: '#c5221f'}]}>
+        <Svg width="14" height="14" viewBox="0 0 14 14">
+          <Path d="M2 5L7 10L12 5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </Svg>
+      </View>
+      <Text style={styles.beatButtonText}>Down beat</Text>
+    </TouchableOpacity>
+  </View>
+)}
+      
+    
+
+{/* SPV Graph display */}
+{spvGraph && (
+  <View style={styles.graphContainer}>
+    <TouchableOpacity 
+      style={styles.closeButton}
+      onPress={() => setSpvGraph(null)}
+    >
+      <Text style={styles.closeButtonText}>✕</Text>
+    </TouchableOpacity>
+    <Image
+      source={{uri: `data:image/png;base64,${spvGraph}`}}
+      style={styles.graphImage}
+      resizeMode="contain"
+    />
+  </View>
+)}
 
     {/* Eye and iris overlays */}
-{eyeData && eyeData.face_detected && (
+{eyeData && eyeData.face_detected && !spvGraph && !isAnalyzing && (
   <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
     {/* Left eye polygon */}
     <Polygon
@@ -251,9 +372,9 @@ if (screenAspect > frameAspect) {
   </Svg>
   )}
 
-    {/* Eye distance display */}
 {/* Face status - always visible */}
-{eyeData && (
+{/* Eye distance display */}
+{eyeData && !spvGraph && !isAnalyzing && (
   <View style={styles.infoBox}>
     <Text style={[styles.infoText, {color: eyeData.face_detected ? 'green' : 'red', fontWeight: 'bold'}]}>
       {eyeData.face_detected ? 'Face: DETECTED' : 'Face: NOT DETECTED'}
@@ -278,10 +399,10 @@ if (screenAspect > frameAspect) {
 )}
     </View>
   );
-  
 }
 
 const styles = StyleSheet.create({
+  
   container: {
     flex: 1,
     backgroundColor: 'black',
@@ -359,6 +480,116 @@ recordInner: {
   height: 50,
   borderRadius: 25,
   backgroundColor: 'red',
+},
+beatButtonsContainer: {
+  position: 'absolute',
+  bottom: 130,
+  left: 20,
+  right: 20,
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  gap: 8,
+},
+beatButton: {
+  backgroundColor: 'rgba(255,255,255,0.95)',
+  borderRadius: 12,
+  padding: 14,
+  flex: 1,
+  alignItems: 'center',
+  gap: 8,
+},
+beatButtonIcon: {
+  width: 32,
+  height: 32,
+  borderRadius: 16,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+beatButtonText: {
+  color: '#333',
+  fontSize: 11,
+  fontWeight: '500',
+  textAlign: 'center',
+  alignSelf: 'center',
+  width: '100%',
+},
+analyzingText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
+  backgroundColor: 'rgba(0,0,0,0.7)',
+  padding: 10,
+  borderRadius: 8,
+},
+graphContainer: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.9)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+graphImage: {
+  width: '100%',
+  height: '80%',
+},
+closeButton: {
+  position: 'absolute',
+  top: 40,
+  right: 20,
+  backgroundColor: 'rgba(255,255,255,0.3)',
+  width: 40,
+  height: 40,
+  borderRadius: 20,
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 10,
+},
+closeButtonText: {
+  color: 'white',
+  fontSize: 18,
+  fontWeight: 'bold',
+},
+analyzingOverlay: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'black',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+analyzingContainer: {
+  alignItems: 'center',
+  gap: 14,
+  paddingHorizontal: 40,
+  width: '100%',
+},
+analyzingTitle: {
+  color: 'white',
+  fontSize: 15,
+  fontWeight: '500',
+},
+analyzingSubtitle: {
+  color: 'rgba(255,255,255,0.4)',
+  fontSize: 11,
+  letterSpacing: 0.5,
+},
+progressBarBackground: {
+  width: '100%',
+  height: 5,
+  backgroundColor: 'rgba(255,255,255,0.1)',
+  borderRadius: 99,
+  overflow: 'hidden',
+},
+progressBarFill: {
+  height: '100%',
+  backgroundColor: '#1a73e8',
+  borderRadius: 99,
 },
 });
 

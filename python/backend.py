@@ -3,7 +3,10 @@ import uvicorn
 import mediapipe as mp
 import numpy as np
 import cv2
-
+import subprocess
+import os
+import base64
+from fastapi.responses import JSONResponse;
 
 REAL_IRIS_DIAMETER_MM = 11.8
 FOCAL_LENGTH_PIXELS = 1000
@@ -99,6 +102,71 @@ async def process_frame(file: UploadFile = File(...)):
         "frame_width": w_orig,
         "frame_height": h_orig,
     }
+
+@app.post("/analyze")
+async def analyze_video(file: UploadFile = File(...), beat_type: str = "left"):
+    try:
+        # Save uploaded video to temp file
+        temp_video_path = f"/tmp/recording_{beat_type}.mp4"
+        contents = await file.read()
+        with open(temp_video_path, "wb") as f:
+            f.write(contents)
+
+        # Select the correct Python script
+        script_map = {
+            "left": "python/Left_Beat.py",
+            "right": "python/Right_Beat.py",
+            "up": "python/Up_Beat.py",
+            "down": "python/Down_Beat.py",
+        }
+        script_path = script_map.get(beat_type, "python/Left_Beat.py")
+
+        # Read the script
+        with open(script_path, 'r') as f:
+            script_content = f.read()
+
+        # Replace video_path with actual path
+        script_content = script_content.replace(
+            script_content[script_content.find("video_path ="):script_content.find("\n", script_content.find("video_path ="))],
+            f"video_path = '{temp_video_path}'"
+        )
+
+        # Add non-interactive matplotlib backend at top and fix save path
+        script_content = "import matplotlib\nmatplotlib.use('Agg')\n" + script_content
+
+#        Make script save graph to /tmp
+        script_content = script_content.replace(
+        "plt.savefig('plot5_spv_analysis.png'",
+        "plt.savefig('/tmp/plot5_spv_analysis.png'"
+)
+
+        # Save modified script to temp file
+        temp_script = f"/tmp/temp_{beat_type}_beat.py"
+        with open(temp_script, 'w') as f:
+            f.write(script_content)
+
+        # Run the script
+        result = subprocess.run(
+            ["python", temp_script],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+
+        # Read generated graph image
+        graph_path = "/tmp/plot5_spv_analysis.png"
+        if not os.path.exists(graph_path):
+            graph_path = "plot5_spv_analysis.png"
+
+        if os.path.exists(graph_path):
+            with open(graph_path, "rb") as img_file:
+                img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+            return {"success": True, "graph": img_base64}
+        else:
+            return {"success": False, "error": "Graph not generated", "stderr": result.stderr}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
