@@ -77,3 +77,4 @@ yarn-error.log
 venv/eye_movement_plots_with_analysis.png
 eye_tracking_data.csv
 plot5_spv_analysis.png
+*.keystore
