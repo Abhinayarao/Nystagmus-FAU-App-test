@@ -167,6 +167,103 @@ async def analyze_video(file: UploadFile = File(...), beat_type: str = "left"):
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+    
+@app.post("/analyze_auto")
+async def analyze_auto(file: UploadFile = File(...)):
+    try:
+        # Save uploaded video to temp file
+        temp_video_path = f"/tmp/recording_auto.mp4"
+        contents = await file.read()
+        with open(temp_video_path, "wb") as f:
+            f.write(contents)
+
+        # Read Decide_Beat.py
+        with open("python/Decide_Beat.py", 'r') as f:
+            decide_content = f.read()
+
+        # Replace video_path
+        decide_content = decide_content.replace(
+            decide_content[decide_content.find("video_path ="):decide_content.find("\n", decide_content.find("video_path ="))],
+            f"video_path = '{temp_video_path}'"
+        )
+
+        # Add matplotlib backend and print direction at end
+        decide_content = "import matplotlib\nmatplotlib.use('Agg')\n" + decide_content
+        decide_content += """
+                         if classification['direction'] is None:
+                         # Use best guess based on counts
+                        if classification['right_count'] > classification['left_count']:
+                            print(f'DIRECTION:rightward')
+                        elif classification['left_count'] > classification['right_count']:
+                            print(f'DIRECTION:leftward')
+                        else:
+                            print(f'DIRECTION:None')
+                        else:
+                            print(f'DIRECTION:{classification[\"direction\"]}')
+                        """
+        
+
+        # Save and run Decide_Beat.py
+        temp_decide = "/tmp/temp_decide_beat.py"
+        with open(temp_decide, 'w') as f:
+            f.write(decide_content)
+
+        result = subprocess.run(
+            ["python", temp_decide],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+
+        # Extract direction from output
+        direction = None
+        for line in result.stdout.split('\n'):
+            if line.startswith('DIRECTION:'):
+                direction = line.replace('DIRECTION:', '').strip()
+                break
+
+        if direction not in ['rightward', 'leftward']:
+                return {"success": False, "error": "No nystagmus detected in the video. Please record a longer video with clear eye movement visible."}
+
+        # Map direction to beat script
+        beat_script = "python/Right_Beat.py" if direction == 'rightward' else "python/Left_Beat.py"
+
+        # Read and run the beat script
+        with open(beat_script, 'r') as f:
+            script_content = f.read()
+
+        script_content = script_content.replace(
+            script_content[script_content.find("video_path ="):script_content.find("\n", script_content.find("video_path ="))],
+            f"video_path = '{temp_video_path}'"
+        )
+        script_content = "import matplotlib\nmatplotlib.use('Agg')\n" + script_content
+        script_content = script_content.replace(
+            "plt.savefig('plot5_spv_analysis.png'",
+            "plt.savefig('/tmp/plot5_spv_analysis.png'"
+        )
+
+        temp_script = f"/tmp/temp_beat.py"
+        with open(temp_script, 'w') as f:
+            f.write(script_content)
+
+        result2 = subprocess.run(
+            ["python", temp_script],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+
+        # Read graph
+        graph_path = "/tmp/plot5_spv_analysis.png"
+        if os.path.exists(graph_path):
+            with open(graph_path, "rb") as img_file:
+                img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+            return {"success": True, "graph": img_base64, "direction": direction}
+        else:
+            return {"success": False, "error": "Graph not generated", "stderr": result2.stderr}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
