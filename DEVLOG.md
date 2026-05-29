@@ -212,3 +212,12 @@ Resized frame to 640×480 before MediaPipe processing on backend.
 - Replaced 4 beat buttons with single **Analyze** button
 - After recording, camera feed dims and eye overlays/numbers stop - focus on Analyze button
 - Weak/mixed classification handled — uses best guess based on count when direction is uncertain
+
+## Backend Deployment - Google Cloud Run
+**Date:** May 29, 2026
+**Status:** ✅ Complete
+
+- Deployed FastAPI backend to Google Cloud Run
+- App now works from anywhere and no longer requires Mac to be running or same WiFi
+- Tested and working on both iOS and Android
+- Free tier used - no cost for current usage level
