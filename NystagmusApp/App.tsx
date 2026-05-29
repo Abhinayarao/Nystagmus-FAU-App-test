@@ -12,7 +12,7 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 // Calculate scale and offset to match camera preview with overlay
 
 
-const BACKEND_URL = 'http://10.0.0.36:8000/process_frame';
+const BACKEND_URL = 'https://nystagmus-backend-852795190390.us-central1.run.app/process_frame';
 
 
 function App(): React.JSX.Element {
@@ -107,7 +107,7 @@ const analyzeVideo = useCallback(async (beatType: string) => {
       name: 'recording.mp4',
     } as any);
     formData.append('beat_type', beatType);
-    const response = await fetch('http://10.0.0.36:8000/analyze', {
+    const response = await fetch('https://nystagmus-backend-852795190390.us-central1.run.app/analyze', {
       method: 'POST',
       body: formData,
     });
@@ -145,7 +145,7 @@ const analyzeVideoAuto = useCallback(async () => {
       type: 'video/mp4',
       name: 'recording.mp4',
     } as any);
-    const response = await fetch('http://10.0.0.36:8000/analyze_auto', {
+    const response = await fetch('https://nystagmus-backend-852795190390.us-central1.run.app/analyze_auto', {
       method: 'POST',
       body: formData,
     });
