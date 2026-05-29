@@ -199,3 +199,16 @@ Resized frame to 640×480 before MediaPipe processing on backend.
 - SPV graph returned as base64 PNG and displayed full screen in app
 - Eye overlays and camera capture pause during analysis and graph display
 - Close button (✕) to return to camera view after viewing graph
+
+## Issue 8 - Flashlight & Auto Beat Detection
+**Date:** May 29, 2026
+**Status:** ✅ Complete
+
+- Back camera torch turns on automatically when recording starts and off when stopped
+- Front camera has no hardware torch (hardware limitation): white overlay was considered as an alternative but decided against - no implementation for now
+- Integrated `Decide_Beat.py` : runs first to detect dominant eye movement direction
+- Based on `classification['direction']` output (`'rightward'` or `'leftward'`), automatically runs `Right_Beat.py` or `Left_Beat.py`
+- Up and Down beat execution commented out as instructed - app only detects left and right beats
+- Replaced 4 beat buttons with single **Analyze** button
+- After recording, camera feed dims and eye overlays/numbers stop - focus on Analyze button
+- Weak/mixed classification handled — uses best guess based on count when direction is uncertain
