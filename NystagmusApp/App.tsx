@@ -36,8 +36,9 @@ const captureAndSend = useCallback(async () => {
   isCapturing.current = true;
   try {
     const photo = await camera.current.takePhoto({
-      flash: 'off',
-    });
+    flash: 'off',
+    enableShutterSound: false,
+    } as any);
     const formData = new FormData();
     formData.append('file', {
       uri: `file://${photo.path}`,
@@ -50,12 +51,10 @@ const captureAndSend = useCallback(async () => {
     });
 
       const data = await response.json();
-      console.log('Frame size:', data.frame_width, data.frame_height);
-      console.log('Screen size:', screenWidth, screenHeight);
       setEyeData(data);
 
   } catch (error) {
-    console.log('Capture error:', error);
+    
   } finally {
     isCapturing.current = false;
   }
@@ -78,51 +77,14 @@ const startRecording = useCallback(() => {
       setIsRecording(false);
     },
     onRecordingError: (error) => {
-      console.log('Recording error:', error);
+      
       isCapturing.current = false;
       setIsRecording(false);
     },
   });
 }, []);
 
-// Send recorded video to backend for SPV analysis
-const analyzeVideo = useCallback(async (beatType: string) => {
-  if (!recordedVideoPath) {
-    Alert.alert('Error', 'No recorded video found. Please record first.');
-    return;
-  }
-  setIsAnalyzing(true);
-  setSpvGraph(null);
-  progressAnim.setValue(0);
-  Animated.timing(progressAnim, {
-  toValue: 90,
-  duration: 8000,
-  useNativeDriver: false,
-}).start();
-  try {
-    const formData = new FormData();
-    formData.append('file', {
-      uri: `file://${recordedVideoPath}`,
-      type: 'video/mp4',
-      name: 'recording.mp4',
-    } as any);
-    formData.append('beat_type', beatType);
-    const response = await fetch('https://nystagmus-backend-852795190390.us-central1.run.app/analyze', {
-      method: 'POST',
-      body: formData,
-    });
-    const data = await response.json();
-    if (data.success) {
-      setSpvGraph(data.graph);
-    } else {
-      Alert.alert('Error', data.error || 'Analysis failed');
-    }
-  } catch (error) {
-    Alert.alert('Error', `Analysis failed: ${error}`);
-  } finally {
-    setIsAnalyzing(false);
-  }
-}, [recordedVideoPath]);
+
 
 // Auto analyze video using Decide_Beat.py
 const analyzeVideoAuto = useCallback(async () => {
@@ -165,7 +127,7 @@ const analyzeVideoAuto = useCallback(async () => {
 // Stop video recording
 const stopRecording = useCallback(async () => {
   if (camera.current == null) return;
-  console.log('Stopping recording...');
+  
   await camera.current.stopRecording();
 }, []);
 
@@ -348,7 +310,7 @@ if (screenAspect > frameAspect) {
       stroke="green"
       strokeWidth="2"
     />
-    {/* Left iris circle */}
+  
     {/* Left iris circle */}
   <Circle
     cx={eyeData.left_iris_center[0] * scaleX + offsetX}
@@ -493,39 +455,7 @@ recordInner: {
   borderRadius: 25,
   backgroundColor: 'red',
 },
-beatButtonsContainer: {
-  position: 'absolute',
-  bottom: 130,
-  left: 20,
-  right: 20,
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  gap: 8,
-},
-beatButton: {
-  backgroundColor: 'rgba(255,255,255,0.95)',
-  borderRadius: 12,
-  padding: 14,
-  flex: 1,
-  alignItems: 'center',
-  gap: 8,
-},
-beatButtonIcon: {
-  width: 32,
-  height: 32,
-  borderRadius: 16,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
 
-beatButtonText: {
-  color: '#333',
-  fontSize: 11,
-  fontWeight: '500',
-  textAlign: 'center',
-  alignSelf: 'center',
-  width: '100%',
-},
 analyzingText: {
   color: 'white',
   fontSize: 16,
