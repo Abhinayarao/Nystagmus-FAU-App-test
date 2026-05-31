@@ -213,11 +213,20 @@ Resized frame to 640×480 before MediaPipe processing on backend.
 - After recording, camera feed dims and eye overlays/numbers stop - focus on Analyze button
 - Weak/mixed classification handled — uses best guess based on count when direction is uncertain
 
-## Backend Deployment - Google Cloud Run
-**Date:** May 29, 2026
-**Status:** ✅ Complete
+**Backend Deployment - Google Cloud Run**
 
 - Deployed FastAPI backend to Google Cloud Run
 - App now works from anywhere and no longer requires Mac to be running or same WiFi
 - Tested and working on both iOS and Android
 - Free tier used - no cost for current usage level
+
+**App Distribution**
+- Deployed backend to **Google Cloud Run** 
+- App now works from anywhere with internet — no Mac or WiFi dependency
+
+**Android:**
+- Built release APK, any teammate with an Android phone can install it directly
+
+**iOS:**
+- App uploaded to TestFlight and ready to distribute
+
