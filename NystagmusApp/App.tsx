@@ -7,6 +7,7 @@ import {
 } from 'react-native-vision-camera';
 import Svg, { Circle, Polygon, Path } from 'react-native-svg';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+import DocumentPicker from 'react-native-document-picker';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 // Calculate scale and offset to match camera preview with overlay
@@ -123,6 +124,20 @@ const analyzeVideoAuto = useCallback(async () => {
     setIsAnalyzing(false);
   }
 }, [recordedVideoPath]);
+
+// Pick video from gallery for analysis
+const pickAndAnalyzeVideo = useCallback(async () => {
+  try {
+    const result = await DocumentPicker.pickSingle({
+      type: DocumentPicker.types.video,
+    });
+    setRecordedVideoPath(result.uri);
+  } catch (error) {
+    if (!DocumentPicker.isCancel(error)) {
+      Alert.alert('Error', 'Failed to pick video');
+    }
+  }
+}, []);
 
 // Stop video recording
 const stopRecording = useCallback(async () => {
@@ -243,7 +258,14 @@ if (screenAspect > frameAspect) {
   <View style={[styles.recordInner, {backgroundColor: isRecording ? 'white' : 'red'}]} />
   </TouchableOpacity>
 
-  
+  {/* Upload video button */}
+<TouchableOpacity style={styles.uploadButton} onPress={pickAndAnalyzeVideo}>
+  <Svg width="54" height="54" viewBox="0 0 512 512">
+    <Path fill="#285EFE" d="M256 0c140.799 0 256 115.201 256 256 0 140.803-115.201 256-256 256C115.197 512 0 396.803 0 256S115.197 0 256 0z"/>
+    <Path fill="#fff" fillRule="nonzero" d="M198.263 206.44c-4.235-.179-7.245-1.591-8.982-4.231-4.718-7.068 1.722-14.055 6.181-18.971 12.678-13.901 43.72-47.321 49.976-54.682 4.736-5.234 11.487-5.234 16.219 0 6.462 7.548 39.073 42.492 51.118 56.011 4.178 4.707 9.349 11.128 4.995 17.642-1.779 2.64-4.752 4.052-8.99 4.231h-25.722v63.571c0 6.788-5.567 12.363-12.359 12.363h-34.348c-6.791 0-12.359-5.564-12.359-12.363V206.44h-25.729zm-77.738 64.484c-1.415-5.844.969-10.435 4.777-13.156a13.352 13.352 0 014.579-2.078 13.35 13.35 0 015.006-.255c4.639.666 8.866 3.658 10.293 9.521a362.674 362.674 0 012.459 10.899l1.943 9.577c2.539 12.813 4.422 20.851 9.155 24.853 5.002 4.235 14.478 5.699 32.637 5.699h127.541c16.759 0 25.509-1.606 30.106-5.762 4.433-4.006 6.17-11.846 8.42-23.876l.124-.622c1.18-6.35 2.475-13.212 4.302-20.768 1.427-5.859 5.65-8.855 10.293-9.521a13.354 13.354 0 015.005.255c1.629.393 3.205 1.1 4.579 2.078 3.808 2.71 6.193 7.301 4.778 13.152-1.667 6.889-2.947 13.722-4.119 19.998l-.067.363c-3.287 17.578-6.017 29.668-15.062 38.167-8.956 8.416-22.989 11.981-48.359 11.981H191.374c-26.531 0-41.114-3.194-50.493-11.502-9.615-8.518-12.527-20.877-16.238-39.624l-1.969-9.779a334.588 334.588 0 00-2.149-9.6z"/>
+  </Svg>
+</TouchableOpacity>
+
   {/* Analyzing overlay - full screen */}
   {isAnalyzing && (
   <View style={styles.analyzingOverlay}>
@@ -566,6 +588,15 @@ dimOverlay: {
   right: 0,
   bottom: 0,
   backgroundColor: 'rgba(14, 13, 13, 0.5)',
+},
+uploadButton: {
+  position: 'absolute',
+  bottom: 40,
+  right: 30,
+},
+uploadButtonText: {
+  color: 'white',
+  fontSize: 30,
 },
 });
 
