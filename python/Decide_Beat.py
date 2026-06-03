@@ -557,8 +557,8 @@ with mp_face_mesh.FaceMesh(
 
         frame_count += 1
 
-        if frame_count <= 100:
-            continue
+        # if frame_count <= 100:
+        #     continue
 
         eye_crop, iris_points, original_frame = detect_and_crop_eyes(face_mesh, frame)
 
