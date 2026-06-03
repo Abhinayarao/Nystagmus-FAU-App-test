@@ -230,3 +230,20 @@ Resized frame to 640×480 before MediaPipe processing on backend.
 **iOS:**
 - App uploaded to TestFlight and ready to distribute
 
+**Pre-recorded Video Analysis**
+**What I did:**
+- Added upload button using react-native-document-picker
+- Selected videos go through the same analyze flow as recorded videos
+- Tested with 4 provided test videos (MOV files)
+
+**What failed:**
+- Cloud Run has a hard 32MB HTTP request limit, Test videos were around 58MB, causing 413 error
+- Switched to Google Cloud Storage, backend still returned 503 when processing large videos
+- 503 was caused by Cloud Run running out of memory (default 512MB) downloading and processing 58MB videos
+
+**What I did to fix it:**
+- Created GCS bucket
+- App gets a signed upload URL from backend, uploads video directly to GCS, then calls /analyze_from_gcs
+- Increased Cloud Run memory to 4GB, CPU to 2 cores, timeout to 300 seconds
+
+**Result:** ✅ Pre-recorded videos of any size analyzed successfully, SPV graph generated for all 4 test videos

@@ -37,22 +37,21 @@ const captureAndSend = useCallback(async () => {
   isCapturing.current = true;
   try {
     const photo = await camera.current.takePhoto({
-    flash: 'off',
-    enableShutterSound: false,
-    } as any);
-    const formData = new FormData();
-    formData.append('file', {
-      uri: `file://${photo.path}`,
-      type: 'image/jpeg',
-      name: 'frame.jpg',
-    } as any);
-    const response = await fetch(BACKEND_URL, {
-      method: 'POST',
-      body: formData,
-    });
-
-      const data = await response.json();
-      setEyeData(data);
+  flash: 'off',
+  enableShutterSound: false,
+} as any);
+const formData = new FormData();
+formData.append('file', {
+  uri: `file://${photo.path}`,
+  type: 'image/jpeg',
+  name: 'frame.jpg',
+} as any);
+const response = await fetch(BACKEND_URL, {
+  method: 'POST',
+  body: formData,
+});
+const data = await response.json();
+setEyeData(data);
 
   } catch (error) {
     
@@ -98,32 +97,52 @@ const analyzeVideoAuto = useCallback(async () => {
   progressAnim.setValue(0);
   Animated.timing(progressAnim, {
     toValue: 90,
-    duration: 8000,
+    duration: 15000,
     useNativeDriver: false,
   }).start();
+  
   try {
-    const formData = new FormData();
-    formData.append('file', {
-      uri: `file://${recordedVideoPath}`,
-      type: 'video/mp4',
-      name: 'recording.mp4',
-    } as any);
-    const response = await fetch('https://nystagmus-backend-852795190390.us-central1.run.app/analyze_auto', {
-      method: 'POST',
-      body: formData,
+    const uri = recordedVideoPath.startsWith('file://') ? recordedVideoPath : `file://${recordedVideoPath}`;
+    const isMov = uri.toLowerCase().includes('.mov');
+    const filename = isMov ? `video_${Date.now()}.mov` : `video_${Date.now()}.mp4`;
+    const contentType = isMov ? 'video/quicktime' : 'video/mp4';
+
+    const urlResponse = await fetch(`https://nystagmus-backend-852795190390.us-central1.run.app/get_upload_url?filename=${filename}`);
+    const urlData = await urlResponse.json();
+    if (!urlResponse.ok || urlData.error) {
+      Alert.alert('Error', `Failed to get upload URL: ${urlData.error || urlResponse.status}`);
+      return;
+    }
+
+    const videoBlob = await fetch(uri).then(r => r.blob());
+    await fetch(urlData.url, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: videoBlob,
     });
-    const data = await response.json();
+
+    const analyzeResponse = await fetch(
+      `https://nystagmus-backend-852795190390.us-central1.run.app/analyze_from_gcs?gcs_path=${filename}`,
+      { method: 'POST' }
+    );
+    const text = await analyzeResponse.text();
+    if (!analyzeResponse.ok || text.startsWith('<')) {
+      Alert.alert('Backend Error', `Status: ${analyzeResponse.status}\n${text.substring(0, 200)}`);
+      return;
+    }
+    const data = JSON.parse(text);
     if (data.success) {
       setSpvGraph(data.graph);
     } else {
       Alert.alert('Error', data.error || 'Analysis failed');
     }
-  } catch (error) {
-    Alert.alert('Error', `Analysis failed: ${error}`);
+
   } finally {
     setIsAnalyzing(false);
+    setRecordedVideoPath(null);
+    isCapturing.current = false;
   }
-}, [recordedVideoPath]);
+  }, [recordedVideoPath]);
 
 // Pick video from gallery for analysis
 const pickAndAnalyzeVideo = useCallback(async () => {
@@ -131,6 +150,7 @@ const pickAndAnalyzeVideo = useCallback(async () => {
     const result = await DocumentPicker.pickSingle({
       type: DocumentPicker.types.video,
     });
+    isCapturing.current = true; // pause frame capture
     setRecordedVideoPath(result.uri);
   } catch (error) {
     if (!DocumentPicker.isCancel(error)) {
@@ -167,12 +187,13 @@ useEffect(() => {
 
 //Takes a photo every 500ms and sends to backend
 useEffect(() => {
-  if (spvGraph) return; // Pause when graph is showing
+  if (spvGraph) return;
+  if (isAnalyzing) return;
   const interval = setInterval(() => {
     captureAndSend();
   }, 25);
   return () => clearInterval(interval);
-}, [captureAndSend, spvGraph]);
+}, [captureAndSend, spvGraph, isAnalyzing]);
 
 //Permission Check
   if (!hasPermission) {
@@ -226,7 +247,7 @@ if (screenAspect > frameAspect) {
       />
     {/* Dim overlay when video recorded */}
     {recordedVideoPath && !isRecording && !isAnalyzing && !spvGraph && (
-    <View style={styles.dimOverlay} />
+    <View style={styles.dimOverlay} pointerEvents="none" />
     )}
 
       {/* Vertical crosshair line */}
@@ -298,9 +319,12 @@ if (screenAspect > frameAspect) {
 {spvGraph && (
   <View style={styles.graphContainer}>
     <TouchableOpacity 
-      style={styles.closeButton}
-      onPress={() => setSpvGraph(null)}
-    >
+  style={styles.closeButton}
+  onPress={() => {
+    setSpvGraph(null);
+    setRecordedVideoPath(null);
+  }}
+>
       <Text style={styles.closeButtonText}>✕</Text>
     </TouchableOpacity>
     <Image

@@ -7,6 +7,8 @@ import subprocess
 import os
 import base64
 from fastapi.responses import JSONResponse;
+from google.cloud import storage
+from datetime import timedelta
 
 REAL_IRIS_DIAMETER_MM = 11.8
 FOCAL_LENGTH_PIXELS = 1000
@@ -30,6 +32,29 @@ app = FastAPI()
 @app.get("/")
 def health_check():
     return {"status": "server is running"}
+
+@app.get("/get_upload_url")
+async def get_upload_url(filename: str):
+    try:
+        import google.auth
+        import google.auth.transport.requests
+        
+        credentials, project = google.auth.default()
+        credentials.refresh(google.auth.transport.requests.Request())
+        client = storage.Client(credentials=credentials)
+        bucket = client.bucket("nystagmus-videos-fau")
+        blob = bucket.blob(filename)
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=15),
+            method="PUT",
+            content_type="video/quicktime",
+            service_account_email=credentials.service_account_email,
+            access_token=credentials.token,
+        )
+        return {"url": url, "filename": filename}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/process_frame")
 async def process_frame(file: UploadFile = File(...)):
@@ -262,6 +287,81 @@ async def analyze_auto(file: UploadFile = File(...)):
         else:
             return {"success": False, "error": "Graph not generated", "stderr": result2.stderr}
 
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/analyze_from_gcs")
+async def analyze_from_gcs(gcs_path: str):
+    try:
+        client = storage.Client()
+        bucket = client.bucket("nystagmus-videos-fau")
+        blob = bucket.blob(gcs_path)
+        temp_video_path = f"/tmp/{gcs_path}"
+        blob.download_to_filename(temp_video_path)
+
+        # Run Decide_Beat.py
+        with open("python/Decide_Beat.py", 'r') as f:
+            decide_content = f.read()
+        decide_content = decide_content.replace(
+            decide_content[decide_content.find("video_path ="):decide_content.find("\n", decide_content.find("video_path ="))],
+            f"video_path = '{temp_video_path}'"
+        )
+        decide_content = "import matplotlib\nmatplotlib.use('Agg')\n" + decide_content
+        decide_content += """
+if classification['direction'] is None:
+    if classification['right_count'] > classification['left_count']:
+        print(f'DIRECTION:rightward')
+    elif classification['left_count'] > classification['right_count']:
+        print(f'DIRECTION:leftward')
+    else:
+        print(f'DIRECTION:None')
+else:
+    print(f'DIRECTION:{classification["direction"]}')
+"""
+        temp_decide = "/tmp/temp_decide_beat.py"
+        with open(temp_decide, 'w') as f:
+            f.write(decide_content)
+        result = subprocess.run(
+            ["python", temp_decide],
+            capture_output=True, text=True, timeout=300
+        )
+
+        direction = None
+        for line in result.stdout.split('\n'):
+            if line.startswith('DIRECTION:'):
+                direction = line.replace('DIRECTION:', '').strip()
+                break
+
+        if direction not in ['rightward', 'leftward']:
+            return {"success": False, "error": "No nystagmus detected in the video."}
+
+        beat_script = "python/Right_Beat.py" if direction == 'rightward' else "python/Left_Beat.py"
+        with open(beat_script, 'r') as f:
+            script_content = f.read()
+        script_content = script_content.replace(
+            script_content[script_content.find("video_path ="):script_content.find("\n", script_content.find("video_path ="))],
+            f"video_path = '{temp_video_path}'"
+        )
+        script_content = "import matplotlib\nmatplotlib.use('Agg')\n" + script_content
+        script_content = script_content.replace(
+            "plt.savefig('plot5_spv_analysis.png'",
+            "plt.savefig('/tmp/plot5_spv_analysis.png'"
+        )
+        temp_script = "/tmp/temp_beat_gcs.py"
+        with open(temp_script, 'w') as f:
+            f.write(script_content)
+        result2 = subprocess.run(
+            ["python", temp_script],
+            capture_output=True, text=True, timeout=300
+        )
+
+        graph_path = "/tmp/plot5_spv_analysis.png"
+        if os.path.exists(graph_path):
+            with open(graph_path, "rb") as img_file:
+                img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+            return {"success": True, "graph": img_base64, "direction": direction}
+        else:
+            return {"success": False, "error": "Graph not generated", "stderr": result2.stderr}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
