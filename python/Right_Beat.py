@@ -825,7 +825,7 @@ if len(tracking_data) > 0:
         print(f"    X position: {segment['start_x']:.3f} → {segment['end_x']:.3f}")
         print(f"    Total increase: +{total_increase:.3f}")
 
-        if total_increase >= 0.03:
+        if total_increase >= 0.02:
             fast_phase_regions.append({
                 'start_frame': segment['start_frame'],
                 'end_frame': segment['end_frame'],
