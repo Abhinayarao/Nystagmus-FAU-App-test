@@ -34,7 +34,7 @@ def health_check():
     return {"status": "server is running"}
 
 @app.get("/get_upload_url")
-async def get_upload_url(filename: str):
+async def get_upload_url(filename: str, content_type: str = "video/quicktime"):
     try:
         import google.auth
         import google.auth.transport.requests
@@ -48,7 +48,7 @@ async def get_upload_url(filename: str):
             version="v4",
             expiration=timedelta(minutes=15),
             method="PUT",
-            content_type="video/quicktime",
+            content_type=content_type,
             service_account_email=credentials.service_account_email,
             access_token=credentials.token,
         )
