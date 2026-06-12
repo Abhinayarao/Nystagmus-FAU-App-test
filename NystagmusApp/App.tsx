@@ -22,7 +22,7 @@ const ONBOARDING_STEPS = [
   {
     icon: 'camera',
     title: 'Position the camera',
-    description: 'Hold the phone 25–30cm from the face. Both eyes should be clearly visible in the frame.',
+    description: 'Hold the phone 10–12cm from the face. Both eyes should be clearly visible in the frame.',
   },
   {
     icon: 'record',
@@ -807,13 +807,19 @@ if (screenAspect > frameAspect) {
 
 {/* Record button */}
 {!showHistory && (
-<TouchableOpacity
-style={[styles.recordButton, {backgroundColor: isRecording ? 'red' : 'white'}]}
-  onPress={isRecording ? stopRecording : startRecording}
-  >
-  <View style={[styles.recordInner, {backgroundColor: isRecording ? 'white' : 'red'}]} />
-  </TouchableOpacity>
+<>
+  <TouchableOpacity
+  style={[styles.recordButton, {backgroundColor: isRecording ? 'red' : 'white'}]}
+    onPress={isRecording ? stopRecording : startRecording}
+    >
+    <View style={[styles.recordInner, isRecording ? styles.recordInnerSquare : styles.recordInnerCircle, {backgroundColor: isRecording ? 'white' : 'red'}]} />
+    </TouchableOpacity>
+  {isRecording && (
+    <Text style={styles.recordingTooltip}>Recording...</Text>
+  )}
+</>
 )}
+
 {/* Upload video button */}
 {!showHistory && (
 <TouchableOpacity style={styles.uploadButton} onPress={pickAndAnalyzeVideo}>
@@ -860,13 +866,22 @@ style={[styles.recordButton, {backgroundColor: isRecording ? 'red' : 'white'}]}
     </View>
   </View>
 )}
-  {/* Analyze button - show after recording */}
+{/* Analyze / Discard buttons - show after recording */}
 {recordedVideoPath && !isRecording && !isAnalyzing && (
-  <View style={styles.analyzeButtonContainer}>
-    <TouchableOpacity style={styles.analyzeButton} onPress={analyzeVideoAuto}>
-      <Text style={styles.analyzeButtonText}>Analyze</Text>
-    </TouchableOpacity>
-  </View>
+<View style={styles.analyzeButtonContainer}>
+  <TouchableOpacity
+    style={styles.discardButton}
+    onPress={() => {
+      setRecordedVideoPath(null);
+      isCapturing.current = false;
+    }}
+  >
+    <Text style={styles.discardButtonText}>Discard</Text>
+  </TouchableOpacity>
+  <TouchableOpacity style={styles.analyzeButton} onPress={analyzeVideoAuto}>
+    <Text style={styles.analyzeButtonText}>Analyze</Text>
+  </TouchableOpacity>
+</View>
 )}
       
     
@@ -1094,8 +1109,29 @@ recordButton: {
 recordInner: {
   width: 50,
   height: 50,
-  borderRadius: 25,
   backgroundColor: 'red',
+},
+recordInnerCircle: {
+  borderRadius: 25,
+},
+recordInnerSquare: {
+  width: 28,
+  height: 28,
+  borderRadius: 6,
+  borderWidth: 2,
+  borderColor: 'white',
+},
+recordingTooltip: {
+  position: 'absolute',
+  bottom: 122,
+  alignSelf: 'center',
+  color: 'red',
+  fontSize: 14,
+  fontWeight: '600',
+  backgroundColor: 'white',
+  paddingHorizontal: 16,
+  paddingVertical: 6,
+  borderRadius: 14,
 },
 
 analyzingText: {
@@ -1173,22 +1209,46 @@ analyzingContainer: {
 analyzeButtonContainer: {
   position: 'absolute',
   bottom: 130,
+  left: 30,
+  right: 30,
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+actionButtonRow: {
+  position: 'absolute',
   left: 0,
   right: 0,
+  flexDirection: 'row',
   alignItems: 'center',
+},
+discardButton: {
+  backgroundColor: 'rgba(255,255,255,0.1)',
+  paddingVertical: 14,
+  paddingHorizontal: 32,
+  borderRadius: 14,
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 110,
+},
+discardButtonText: {
+  color: 'rgba(255,255,255,0.6)',
+  fontSize: 14,
+  fontWeight: '500',
 },
 analyzeButton: {
   backgroundColor: '#1557c0',
   paddingVertical: 14,
-  paddingHorizontal: 40,
+  paddingHorizontal: 32,
   borderRadius: 14,
   alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 110,
   elevation: 5,
   shadowColor: '#000',
   shadowOffset: {width: 0, height: 2},
   shadowOpacity: 0.3,
   shadowRadius: 4,
-  
 },
 analyzingTitle: {
   color: 'white',
@@ -1202,8 +1262,8 @@ analyzingSubtitle: {
 },
 analyzeButtonText: {
   color: 'white',
-  fontSize: 16,
-  fontWeight: '700',
+  fontSize: 14,
+  fontWeight: '600',
   letterSpacing: 0.5,
 },
 progressBarBackground: {
