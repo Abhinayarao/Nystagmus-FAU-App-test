@@ -64,6 +64,7 @@ const pullDownAnim = useRef(new Animated.Value(0)).current;
 const [isPulling, setIsPulling] = useState(false);
 const [isRefreshing, setIsRefreshing] = useState(false);
 const [isUploading, setIsUploading] = useState(false);
+const [isSilentUploading, setIsSilentUploading] = useState(false);
 const [uploadedPath, setUploadedPath] = useState<string | null>(null);
 const [torchLevel, setTorchLevel] = useState(1.0);
 const torchLevelRef = useRef(1.0);
@@ -107,15 +108,16 @@ const startRecording = useCallback(() => {
   setIsRecording(true);
   camera.current.startRecording({
     onRecordingFinished: async (video) => {
-      try {
-        await CameraRoll.saveAsset(`file://${video.path}`, { type: 'video' });
-        setRecordedVideoPath(video.path);
-      } catch (error) {
-        Alert.alert('Error', `Failed to save video: ${JSON.stringify(error)}`);
-      }
-      isCapturing.current = false;
-      setIsRecording(false);
-    },
+  try {
+    await CameraRoll.saveAsset(`file://${video.path}`, { type: 'video' });
+    setRecordedVideoPath(video.path);
+    uploadRecordingToCloud(video.path, true);
+  } catch (error) {
+    Alert.alert('Error', `Failed to save video: ${JSON.stringify(error)}`);
+  }
+  isCapturing.current = false;
+  setIsRecording(false);
+},
     onRecordingError: (error) => {
       
       isCapturing.current = false;
@@ -233,7 +235,7 @@ const analyzeVideoAuto = useCallback(async () => {
   setTimeout(() => {
     Alert.alert(
       'Analysis Complete',
-      'Would you like to save this analysis and upload the recording?',
+      'Would you like to save this analysis?',
       [
         {
           text: 'Discard',
@@ -247,12 +249,11 @@ const analyzeVideoAuto = useCallback(async () => {
   },
 },
         {
-          text: 'Save & Upload',
-          onPress: () => {
-            saveToHistory(data.graph, data.direction || 'unknown');
-            uploadRecordingToCloud(currentVideoPath);
-          },
-        },
+  text: 'Save',
+  onPress: () => {
+    saveToHistory(data.graph, data.direction || 'unknown');
+  },
+},
       ]
     );
   }, 500);
@@ -288,15 +289,19 @@ const pickAndAnalyzeVideo = useCallback(async () => {
 }, []);
 
 // Upload recording to GCS for research monitoring
-const uploadRecordingToCloud = useCallback(async (videoPath: string) => {
+const uploadRecordingToCloud = useCallback(async (videoPath: string, silent: boolean = false) => {
   try {
-    setIsUploading(true);
-    progressAnim.setValue(0);
-    Animated.timing(progressAnim, {
-      toValue: 90,
-      duration: 10000,
-      useNativeDriver: false,
-    }).start();
+    if (silent) {
+      setIsSilentUploading(true);
+    } else {
+      setIsUploading(true);
+      progressAnim.setValue(0);
+      Animated.timing(progressAnim, {
+        toValue: 90,
+        duration: 10000,
+        useNativeDriver: false,
+      }).start();
+    }
     const isMov = videoPath.toLowerCase().includes('.mov');
     const timestamp = Date.now();
     const filename = `recordings/${timestamp}_${isMov ? 'recording.mov' : 'recording.mp4'}`;
@@ -321,23 +326,31 @@ const uploadRecordingToCloud = useCallback(async (videoPath: string) => {
 
     if (uploadResult.respInfo.status === 200) {
       setUploadedPath(filename);
-      Animated.timing(progressAnim, {
-        toValue: 100,
-        duration: 300,
-        useNativeDriver: false,
-      }).start();
-      Alert.alert('Uploaded', 'Recording uploaded successfully for research monitoring.');
+      if (!silent) {
+        Animated.timing(progressAnim, {
+          toValue: 100,
+          duration: 300,
+          useNativeDriver: false,
+        }).start();
+        Alert.alert('Uploaded', 'Recording uploaded successfully for research monitoring.');
+      }
     } else {
-      Alert.alert('Upload Failed', 'Could not upload to cloud.');
+      if (!silent) {
+        Alert.alert('Upload Failed', 'Could not upload to cloud.');
+      }
     }
-
     // Clean up temp file
     await RNFS.unlink(destPath).catch(() => {});
-
   } catch (error) {
-    Alert.alert('Upload Failed', `Error: ${error}`);
+    if (!silent) {
+      Alert.alert('Upload Failed', `Error: ${error}`);
+    }
   } finally {
-    setIsUploading(false);
+    if (silent) {
+      setIsSilentUploading(false);
+    } else {
+      setIsUploading(false);
+    }
   }
 }, []);
 const onRefresh = useCallback(() => {
