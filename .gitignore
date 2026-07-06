@@ -80,3 +80,4 @@ plot5_spv_analysis.png
 *.keystore
 eye_movement_plots_with_analysis.png
 Nystagmus-FAU-App-/
+venv/
