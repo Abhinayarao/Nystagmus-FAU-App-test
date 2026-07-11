@@ -9,6 +9,7 @@ import base64
 from fastapi.responses import JSONResponse;
 from google.cloud import storage
 from datetime import timedelta
+import time
 
 REAL_IRIS_DIAMETER_MM = 11.8
 FOCAL_LENGTH_PIXELS = 1000
@@ -291,13 +292,19 @@ async def analyze_auto(file: UploadFile = File(...)):
         return {"success": False, "error": str(e)}
 
 @app.post("/analyze_from_gcs")
-async def analyze_from_gcs(gcs_path: str):
+async def analyze_from_gcs(gcs_path: str, session_id: str = None):
     try:
         client = storage.Client()
         bucket = client.bucket("nystagmus-videos-fau")
+
+        filename = os.path.basename(gcs_path)
+        graph_id = session_id if session_id else str(int(time.time() * 1000))
+
+        # Download video
         blob = bucket.blob(gcs_path)
-        temp_video_path = f"/tmp/{gcs_path}"
+        temp_video_path = f"/tmp/{filename}"
         blob.download_to_filename(temp_video_path)
+
 
         # Run Decide_Beat.py
         with open("python/Decide_Beat.py", 'r') as f:
@@ -332,9 +339,40 @@ else:
                 direction = line.replace('DIRECTION:', '').strip()
                 break
 
+        # No nystagmus detected
         if direction not in ['rightward', 'leftward']:
-            return {"success": False, "error": "No nystagmus detected in the video."}
+            # Generate a simple "no nystagmus" graph image
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(14, 8))
+            ax.text(0.5, 0.5, 'No Nystagmus Detected',
+                    transform=ax.transAxes,
+                    fontsize=28, fontweight='bold',
+                    color='#e53e3e', ha='center', va='center',
+                    bbox=dict(boxstyle='round,pad=1', facecolor='#fff5f5',
+                              edgecolor='#e53e3e', linewidth=2))
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis('off')
+            ax.set_title('SPV Analysis Result', fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            no_nystagmus_path = "/tmp/plot5_spv_analysis.png"
+            plt.savefig(no_nystagmus_path, dpi=150, bbox_inches='tight')
+            plt.close()
 
+            # Upload no-nystagmus graph
+            graph_blob = bucket.blob(f"graphs/{graph_id}.png")
+            graph_blob.upload_from_filename(no_nystagmus_path)
+
+            with open(no_nystagmus_path, "rb") as img_file:
+                img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+
+            return {
+                "success": False,
+                "error": "No nystagmus detected in the video.",
+                "no_nystagmus": True
+                }
+
+        # Run beat script
         beat_script = "python/Right_Beat.py" if direction == 'rightward' else "python/Left_Beat.py"
         with open(beat_script, 'r') as f:
             script_content = f.read()
@@ -357,11 +395,21 @@ else:
 
         graph_path = "/tmp/plot5_spv_analysis.png"
         if os.path.exists(graph_path):
+            # Upload graph to graphs folder in GCS
+            graph_blob = bucket.blob(f"graphs/{graph_id}.png")
+            graph_blob.upload_from_filename(graph_path)
+
             with open(graph_path, "rb") as img_file:
                 img_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-            return {"success": True, "graph": img_base64, "direction": direction}
+
+            return {
+                "success": True,
+                "graph": img_base64,
+                "direction": direction
+            }
         else:
             return {"success": False, "error": "Graph not generated", "stderr": result2.stderr}
+
     except Exception as e:
         return {"success": False, "error": str(e)}
 

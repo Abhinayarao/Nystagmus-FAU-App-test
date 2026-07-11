@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useRef, useCallback} from 'react';
+  import React, {useEffect, useState, useRef, useCallback} from 'react';
 import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert, PermissionsAndroid, Platform, Image, Animated, PanResponder, useWindowDimensions, ScrollView, RefreshControl} from 'react-native';
 import {
   Camera,
@@ -66,6 +66,10 @@ const [isRefreshing, setIsRefreshing] = useState(false);
 const [isUploading, setIsUploading] = useState(false);
 const [isSilentUploading, setIsSilentUploading] = useState(false);
 const [uploadedPath, setUploadedPath] = useState<string | null>(null);
+const uploadedPathRef = useRef<string | null>(null);
+const [sessionId, setSessionId] = useState<string | null>(null);
+const sessionIdRef = useRef<string | null>(null);
+const isSilentUploadingRef = useRef(false);
 const [torchLevel, setTorchLevel] = useState(1.0);
 const torchLevelRef = useRef(1.0);
 const TORCH_LEVELS = [0.25, 0.5, 0.75, 1.0];
@@ -200,29 +204,29 @@ const analyzeVideoAuto = useCallback(async () => {
   }).start();
   
   try {
-    const uri = recordedVideoPath.startsWith('file://') ? recordedVideoPath : `file://${recordedVideoPath}`;
-    const isMov = uri.toLowerCase().includes('.mov');
-    const filename = isMov ? `video_${Date.now()}.mov` : `video_${Date.now()}.mp4`;
-    const contentType = isMov ? 'video/quicktime' : 'video/mp4';
-
-    const urlResponse = await fetch(`https://nystagmus-backend-852795190390.us-central1.run.app/get_upload_url?filename=${filename}`);
-    const urlData = await urlResponse.json();
-    if (!urlResponse.ok || urlData.error) {
-      Alert.alert('Error', `Failed to get upload URL: ${urlData.error || urlResponse.status}`);
-      return;
+    // If a background upload is still running, wait for it instead of failing immediately
+    if ((!uploadedPathRef.current || !sessionIdRef.current) && isSilentUploadingRef.current) {
+      const maxWaitMs = 30000;
+      const startWait = Date.now();
+      while (
+        (!uploadedPathRef.current || !sessionIdRef.current) &&
+        isSilentUploadingRef.current &&
+        Date.now() - startWait < maxWaitMs
+      ) {
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
     }
 
-    const videoBlob = await fetch(uri).then(r => r.blob());
-    await fetch(urlData.url, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: videoBlob,
-    });
+    const filename = uploadedPathRef.current;
+if (!filename || !sessionIdRef.current) {
+  Alert.alert('Error', 'Video not uploaded yet. Please try again.');
+  return;
+}
 
     const analyzeResponse = await fetch(
-      `https://nystagmus-backend-852795190390.us-central1.run.app/analyze_from_gcs?gcs_path=${filename}`,
-      { method: 'POST' }
-    );
+  `https://nystagmus-backend-852795190390.us-central1.run.app/analyze_from_gcs?gcs_path=${filename}&session_id=${sessionIdRef.current}`,
+  { method: 'POST' }
+);
     const text = await analyzeResponse.text();
     if (!analyzeResponse.ok || text.startsWith('<')) {
       Alert.alert('Backend Error', `Status: ${analyzeResponse.status}\n${text.substring(0, 200)}`);
@@ -281,6 +285,7 @@ const pickAndAnalyzeVideo = useCallback(async () => {
     const sourcePath = result.uri.replace('file://', '');
     await RNFS.copyFile(sourcePath, destPath);
     setRecordedVideoPath(`file://${destPath}`);
+    uploadRecordingToCloud(`file://${destPath}`, true);
   } catch (error) {
     if (!DocumentPicker.isCancel(error)) {
       Alert.alert('Error', 'Failed to pick video');
@@ -290,9 +295,13 @@ const pickAndAnalyzeVideo = useCallback(async () => {
 
 // Upload recording to GCS for research monitoring
 const uploadRecordingToCloud = useCallback(async (videoPath: string, silent: boolean = false) => {
+  uploadedPathRef.current = null;
+  sessionIdRef.current = null;
+  setUploadedPath(null);
   try {
     if (silent) {
       setIsSilentUploading(true);
+      isSilentUploadingRef.current = true;
     } else {
       setIsUploading(true);
       progressAnim.setValue(0);
@@ -304,28 +313,28 @@ const uploadRecordingToCloud = useCallback(async (videoPath: string, silent: boo
     }
     const isMov = videoPath.toLowerCase().includes('.mov');
     const timestamp = Date.now();
-    const filename = `recordings/${timestamp}_${isMov ? 'recording.mov' : 'recording.mp4'}`;
+    const sessionId = timestamp;
+    const filename = `recordings/${sessionId}.${isMov ? 'mov' : 'mp4'}`;
     const contentType = isMov ? 'video/quicktime' : 'video/mp4';
 
-    // Get signed upload URL
     const urlResponse = await fetch(`https://nystagmus-backend-852795190390.us-central1.run.app/get_upload_url?filename=${filename}&content_type=${encodeURIComponent(contentType)}`);
-    const urlData = await urlResponse.json();
-    if (!urlResponse.ok || urlData.error) {
-      Alert.alert('Upload Failed', 'Could not get upload URL.');
-      return;
-    }
+const urlData = await urlResponse.json();
+if (!urlResponse.ok || urlData.error) {
+  Alert.alert('Upload Failed', `Could not get upload URL: ${urlData.error || urlResponse.status}`);
+  return;
+}
 
-    // Copy file to temp location handling both ph:// and file:// URIs
-    const destPath = `${RNFS.TemporaryDirectoryPath}upload_${timestamp}.mov`;
-    const sourcePath = videoPath.startsWith('file://') ? videoPath.replace('file://', '') : videoPath;
-    
-    // Upload to GCS
-    const uploadResult = await ReactNativeBlobUtil.fetch('PUT', urlData.url, {
-      'Content-Type': contentType,
-    }, ReactNativeBlobUtil.wrap(destPath));
+const sourcePath = videoPath.startsWith('file://') ? videoPath.replace('file://', '') : videoPath;
+
+const uploadResult = await ReactNativeBlobUtil.fetch('PUT', urlData.url, {
+  'Content-Type': contentType,
+}, ReactNativeBlobUtil.wrap(sourcePath));
 
     if (uploadResult.respInfo.status === 200) {
       setUploadedPath(filename);
+      uploadedPathRef.current = filename;
+      setSessionId(timestamp.toString());
+      sessionIdRef.current = timestamp.toString();
       if (!silent) {
         Animated.timing(progressAnim, {
           toValue: 100,
@@ -339,15 +348,12 @@ const uploadRecordingToCloud = useCallback(async (videoPath: string, silent: boo
         Alert.alert('Upload Failed', 'Could not upload to cloud.');
       }
     }
-    // Clean up temp file
-    await RNFS.unlink(destPath).catch(() => {});
-  } catch (error) {
-    if (!silent) {
-      Alert.alert('Upload Failed', `Error: ${error}`);
-    }
-  } finally {
+} catch (error) {
+    Alert.alert('Upload Failed', `Error: ${error}`);
+} finally {
     if (silent) {
       setIsSilentUploading(false);
+      isSilentUploadingRef.current = false;
     } else {
       setIsUploading(false);
     }
@@ -880,8 +886,7 @@ if (screenAspect > frameAspect) {
   </View>
 )}
 {/* Analyze / Discard buttons - show after recording */}
-{recordedVideoPath && !isRecording && !isAnalyzing && (
-<View style={styles.analyzeButtonContainer}>
+{recordedVideoPath && !isRecording && !isAnalyzing && (<View style={styles.analyzeButtonContainer}>
   <TouchableOpacity
     style={styles.discardButton}
     onPress={() => {
