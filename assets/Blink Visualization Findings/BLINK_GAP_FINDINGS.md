@@ -40,4 +40,4 @@ The minimum EAR observed across tested videos was **0.294**. EAR 0.25 detected m
 
 ## Results
 Both sets of results (Approach 1 and Approach 2) for all 6 scenarios are attached in `assets/Blink Visualization/`.
-
+Outside the 5°–30° range, the implementation relies on hardcoded values.
