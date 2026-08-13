@@ -1,4 +1,5 @@
-  import React, {useEffect, useState, useRef, useCallback} from 'react';
+import { launchImageLibrary } from 'react-native-image-picker';
+import React, {useEffect, useState, useRef, useCallback} from 'react';
 import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert, PermissionsAndroid, Platform, Image, Animated, PanResponder, useWindowDimensions, ScrollView, RefreshControl} from 'react-native';
 import {
   Camera,
@@ -39,7 +40,7 @@ const ONBOARDING_STEPS = [
 function App(): React.JSX.Element {
   
 const { hasPermission, requestPermission } = useCameraPermission();
-const [cameraPosition, setCameraPosition] = useState<'front' | 'back'>('front');
+const [cameraPosition, setCameraPosition] = useState<'front' | 'back'>('back');
 const device = useCameraDevice(cameraPosition);
 const camera = useRef<Camera>(null);
 const isCapturing = useRef(false);
@@ -74,6 +75,7 @@ const [torchLevel, setTorchLevel] = useState(1.0);
 const torchLevelRef = useRef(1.0);
 const TORCH_LEVELS = [0.25, 0.5, 0.75, 1.0];
 const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+const [showAnnotations, setShowAnnotations] = useState(false);
 
 // Returns: eye distances, centering scores, iris positions
 const captureAndSend = useCallback(async () => {
@@ -235,7 +237,17 @@ if (!filename || !sessionIdRef.current) {
     const data = JSON.parse(text);
     if (data.success) {
   setSpvGraph(data.graph);
-  const currentVideoPath = savedVideoPath;
+
+  // Save graph to gallery automatically
+  try {
+    const graphPath = `${RNFS.TemporaryDirectoryPath}spv_graph_${Date.now()}.png`;
+    await RNFS.writeFile(graphPath, data.graph, 'base64');
+    await CameraRoll.saveAsset(`file://${graphPath}`, { type: 'photo' });
+    await RNFS.unlink(graphPath).catch(() => {});
+  } catch (e) {
+    console.error('Failed to save graph to gallery:', e);
+  }
+
   setTimeout(() => {
     Alert.alert(
       'Analysis Complete',
@@ -245,23 +257,17 @@ if (!filename || !sessionIdRef.current) {
           text: 'Discard',
           style: 'destructive',
         },
-{
-  text: 'Save Only',
-  onPress: () => {
-    saveToHistory(data.graph, data.direction || 'unknown');
-    Alert.alert('Analysis saved to your history ✓');
-  },
-},
         {
-  text: 'Save',
-  onPress: () => {
-    saveToHistory(data.graph, data.direction || 'unknown');
-  },
-},
+          text: 'Save',
+          onPress: () => {
+            saveToHistory(data.graph, data.direction || 'unknown');
+            Alert.alert('Analysis saved to your history ✓');
+          },
+        },
       ]
     );
   }, 500);
-}else {
+} else {
       Alert.alert('Error', data.error || 'Analysis failed');
     }
 
@@ -274,23 +280,57 @@ if (!filename || !sessionIdRef.current) {
 
 // Pick video from gallery for analysis
 const pickAndAnalyzeVideo = useCallback(async () => {
-  try {
-    const result = await DocumentPicker.pickSingle({
-      type: DocumentPicker.types.video,
-    });
-    isCapturing.current = true;
-    // Copy immediately to stable location
-    const isMov = result.uri.toLowerCase().includes('.mov');
-    const destPath = `${RNFS.TemporaryDirectoryPath}picked_${Date.now()}.${isMov ? 'mov' : 'mp4'}`;
-    const sourcePath = result.uri.replace('file://', '');
-    await RNFS.copyFile(sourcePath, destPath);
-    setRecordedVideoPath(`file://${destPath}`);
-    uploadRecordingToCloud(`file://${destPath}`, true);
-  } catch (error) {
-    if (!DocumentPicker.isCancel(error)) {
-      Alert.alert('Error', 'Failed to pick video');
-    }
-  }
+  Alert.alert(
+    'Select Video',
+    'Choose where to pick your video from',
+    [
+      {
+        text: 'Gallery',
+        onPress: async () => {
+          launchImageLibrary(
+            { mediaType: 'video', includeBase64: false },
+            async (response) => {
+              if (response.didCancel || response.errorCode) return;
+              const asset = response.assets?.[0];
+              if (!asset?.uri) return;
+              isCapturing.current = true;
+              const isMov = asset.uri.toLowerCase().includes('.mov');
+              const destPath = `${RNFS.TemporaryDirectoryPath}picked_${Date.now()}.${isMov ? 'mov' : 'mp4'}`;
+              const sourcePath = asset.uri.replace('file://', '');
+              await RNFS.copyFile(sourcePath, destPath);
+              setRecordedVideoPath(`file://${destPath}`);
+              uploadRecordingToCloud(`file://${destPath}`, true);
+            }
+          );
+        },
+      },
+      {
+        text: 'Files',
+        onPress: async () => {
+          try {
+            const result = await DocumentPicker.pickSingle({
+              type: DocumentPicker.types.video,
+            });
+            isCapturing.current = true;
+            const isMov = result.uri.toLowerCase().includes('.mov');
+            const destPath = `${RNFS.TemporaryDirectoryPath}picked_${Date.now()}.${isMov ? 'mov' : 'mp4'}`;
+            const sourcePath = result.uri.replace('file://', '');
+            await RNFS.copyFile(sourcePath, destPath);
+            setRecordedVideoPath(`file://${destPath}`);
+            uploadRecordingToCloud(`file://${destPath}`, true);
+          } catch (error) {
+            if (!DocumentPicker.isCancel(error)) {
+              Alert.alert('Error', 'Failed to pick video');
+            }
+          }
+        },
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+    ]
+  );
 }, []);
 
 // Upload recording to GCS for research monitoring
@@ -643,18 +683,10 @@ if (screenAspect > frameAspect) {
 )}
 
       {/* Vertical crosshair line */}
-    <View style={styles.verticalLine} />
+{showAnnotations && <View style={styles.verticalLine} />}
 
-      {/* Horizontal crosshair line */}
-    <View style={styles.horizontalLine} />
-
-
-    {/* Swipe up handle */}
-{!isAnalyzing && !spvGraph && !recordedVideoPath && (
-  <View style={styles.swipeHandle} {...panResponder.panHandlers}>
-    <View style={styles.swipeHandleBar} />
-  </View>
-)}
+{/* Horizontal crosshair line */}
+{showAnnotations && <View style={styles.horizontalLine} />}
 
 {/* History drawer */}
 <Animated.View style={[styles.historyDrawer, {
@@ -773,21 +805,30 @@ if (screenAspect > frameAspect) {
   </View>
   )}
 </Animated.View>
-  {/* Camera switch button */}
-    {!showHistory && (
-  <TouchableOpacity 
-  style={styles.switchButton}
-  onPress={() => setCameraPosition(prev => prev === 'front' ? 'back' : 'front')}
+  {/* History button */}
+{!showHistory && !isAnalyzing && !spvGraph && (
+  <TouchableOpacity
+    style={styles.switchButton}
+    onPress={() => {
+      Animated.spring(drawerAnim, {
+        toValue: 400,
+        useNativeDriver: false,
+      }).start();
+      showHistoryRef.current = true;
+      setShowHistory(true);
+      setHistoryLoading(true);
+      setTimeout(() => loadHistory(), 100);
+    }}
   >
+    <Svg width="28" height="28" viewBox="0 0 24 24">
+  <Path
+    d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"
+    fill="white"
+  />
+</Svg>
     
-  <Svg width="30" height="30" viewBox="0 0 24 24">
-    <Path
-      d="M20,5h-3.17L15,3H9L7.17,5H4C2.9,5,2,5.9,2,7v12c0,1.1,0.9,2,2,2h16c1.1,0,2-0.9,2-2V7C22,5.9,21.1,5,20,5z M12,18c-2.76,0-5-2.24-5-5H5l2.5-2.5L10,13H8c0,2.21,1.79,4,4,4c0.58,0,1.13-0.13,1.62-0.35l0.74,0.74C13.65,17.76,12.86,18,12,18z M16.5,15.5L14,13h2c0-2.21-1.79-4-4-4c-0.58,0-1.13,0.13-1.62,0.35L9.64,8.62C10.35,8.24,11.14,8,12,8c2.76,0,5,2.24,5,5h2L16.5,15.5z"
-      fill="white"
-    />
-  </Svg>
   </TouchableOpacity>
-    )}
+)}
 
 {/* Torch level */}
 {!showHistory && isRecording && cameraPosition === 'back' && (
@@ -839,14 +880,30 @@ if (screenAspect > frameAspect) {
 </>
 )}
 
+{/* Calibrate button */}
+{!showHistory && !isRecording && !isAnalyzing && !spvGraph && (
+  <TouchableOpacity
+    style={[styles.calibrateButton, showAnnotations && styles.calibrateButtonActive]}
+    onPress={() => setShowAnnotations(prev => !prev)}
+    activeOpacity={0.7}
+  >
+    <Text style={styles.calibrateText}>⚙️ Calibrate</Text>
+    <View style={[styles.toggleTrack, showAnnotations && styles.toggleTrackActive]}>
+      <View style={[styles.toggleThumb, showAnnotations && styles.toggleThumbActive]} />
+    </View>
+  </TouchableOpacity>
+)}
+{showAnnotations && !showHistory && !isRecording && !isAnalyzing && !spvGraph && (
+  <Text style={styles.calibrateSubText}>Research version for {'\n'} accurate recording</Text>
+)}
 {/* Upload video button */}
 {!showHistory && (
-<TouchableOpacity style={styles.uploadButton} onPress={pickAndAnalyzeVideo}>
-  <Svg width="54" height="54" viewBox="0 0 512 512">
-    <Path fill="#285EFE" d="M256 0c140.799 0 256 115.201 256 256 0 140.803-115.201 256-256 256C115.197 512 0 396.803 0 256S115.197 0 256 0z"/>
-    <Path fill="#fff" fillRule="nonzero" d="M198.263 206.44c-4.235-.179-7.245-1.591-8.982-4.231-4.718-7.068 1.722-14.055 6.181-18.971 12.678-13.901 43.72-47.321 49.976-54.682 4.736-5.234 11.487-5.234 16.219 0 6.462 7.548 39.073 42.492 51.118 56.011 4.178 4.707 9.349 11.128 4.995 17.642-1.779 2.64-4.752 4.052-8.99 4.231h-25.722v63.571c0 6.788-5.567 12.363-12.359 12.363h-34.348c-6.791 0-12.359-5.564-12.359-12.363V206.44h-25.729zm-77.738 64.484c-1.415-5.844.969-10.435 4.777-13.156a13.352 13.352 0 014.579-2.078 13.35 13.35 0 015.006-.255c4.639.666 8.866 3.658 10.293 9.521a362.674 362.674 0 012.459 10.899l1.943 9.577c2.539 12.813 4.422 20.851 9.155 24.853 5.002 4.235 14.478 5.699 32.637 5.699h127.541c16.759 0 25.509-1.606 30.106-5.762 4.433-4.006 6.17-11.846 8.42-23.876l.124-.622c1.18-6.35 2.475-13.212 4.302-20.768 1.427-5.859 5.65-8.855 10.293-9.521a13.354 13.354 0 015.005.255c1.629.393 3.205 1.1 4.579 2.078 3.808 2.71 6.193 7.301 4.778 13.152-1.667 6.889-2.947 13.722-4.119 19.998l-.067.363c-3.287 17.578-6.017 29.668-15.062 38.167-8.956 8.416-22.989 11.981-48.359 11.981H191.374c-26.531 0-41.114-3.194-50.493-11.502-9.615-8.518-12.527-20.877-16.238-39.624l-1.969-9.779a334.588 334.588 0 00-2.149-9.6z"/>
-  </Svg>
-</TouchableOpacity>
+  <TouchableOpacity style={styles.uploadButton} onPress={pickAndAnalyzeVideo}>
+    <Svg width="54" height="54" viewBox="0 0 512 512">
+      <Path fill="#285EFE" d="M256 0c140.799 0 256 115.201 256 256 0 140.803-115.201 256-256 256C115.197 512 0 396.803 0 256S115.197 0 256 0z"/>
+      <Path fill="#fff" fillRule="nonzero" d="M198.263 206.44c-4.235-.179-7.245-1.591-8.982-4.231-4.718-7.068 1.722-14.055 6.181-18.971 12.678-13.901 43.72-47.321 49.976-54.682 4.736-5.234 11.487-5.234 16.219 0 6.462 7.548 39.073 42.492 51.118 56.011 4.178 4.707 9.349 11.128 4.995 17.642-1.779 2.64-4.752 4.052-8.99 4.231h-25.722v63.571c0 6.788-5.567 12.363-12.359 12.363h-34.348c-6.791 0-12.359-5.564-12.359-12.363V206.44h-25.729zm-77.738 64.484c-1.415-5.844.969-10.435 4.777-13.156a13.352 13.352 0 014.579-2.078 13.35 13.35 0 015.006-.255c4.639.666 8.866 3.658 10.293 9.521a362.674 362.674 0 012.459 10.899l1.943 9.577c2.539 12.813 4.422 20.851 9.155 24.853 5.002 4.235 14.478 5.699 32.637 5.699h127.541c16.759 0 25.509-1.606 30.106-5.762 4.433-4.006 6.17-11.846 8.42-23.876l.124-.622c1.18-6.35 2.475-13.212 4.302-20.768 1.427-5.859 5.65-8.855 10.293-9.521a13.354 13.354 0 015.005.255c1.629.393 3.205 1.1 4.579 2.078 3.808 2.71 6.193 7.301 4.778 13.152-1.667 6.889-2.947 13.722-4.119 19.998l-.067.363c-3.287 17.578-6.017 29.668-15.062 38.167-8.956 8.416-22.989 11.981-48.359 11.981H191.374c-26.531 0-41.114-3.194-50.493-11.502-9.615-8.518-12.527-20.877-16.238-39.624l-1.969-9.779a334.588 334.588 0 00-2.149-9.6z"/>
+    </Svg>
+  </TouchableOpacity>
 )}
 {/* Uploading overlay */}
 {isUploading && (
@@ -956,16 +1013,26 @@ if (screenAspect > frameAspect) {
         <Text style={styles.graphInfoDate}>{selectedHistoryItem.date}</Text>
       </View>
     )}
-    <Image
-      source={{uri: `data:image/png;base64,${spvGraph}`}}
-      style={[styles.graphImage, { width: screenWidth, height: screenHeight * 0.8 }]}
-      resizeMode="contain"
-    />
+    <ScrollView
+  style={{ width: screenWidth, height: screenHeight * 0.8 }}
+  maximumZoomScale={5}
+  minimumZoomScale={1}
+  bouncesZoom={true}
+  centerContent={true}
+  showsHorizontalScrollIndicator={false}
+  showsVerticalScrollIndicator={false}
+>
+  <Image
+    source={{uri: `data:image/png;base64,${spvGraph}`}}
+    style={{ width: screenWidth, height: screenHeight * 0.8 }}
+    resizeMode="contain"
+  />
+</ScrollView>
   </View>
 )}
 
-    {/* Eye and iris overlays */}
-{eyeData && eyeData.face_detected && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
+{/* Eye and iris overlays */}
+{showAnnotations && eyeData && eyeData.face_detected && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
   <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
     {/* Left eye polygon */}
     <Polygon
@@ -1023,7 +1090,7 @@ if (screenAspect > frameAspect) {
 
 
 {/* Eye distance display */}
-{eyeData && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
+{showAnnotations && eyeData && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
   <View style={styles.infoBox}>
     <Text style={[styles.infoText, {color: eyeData.face_detected ? 'green' : 'red', fontWeight: 'bold'}]}>
       {eyeData.face_detected ? 'Face: DETECTED' : 'Face: NOT DETECTED'}
@@ -1600,7 +1667,60 @@ torchPercent: {
   fontSize: 9,
   fontWeight: '500',
 },
+calibrateButton: {
+  position: 'absolute',
+  top: 60,
+  right: 20,
+  backgroundColor: 'rgba(0,0,0,0.65)',
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 12,
+  borderWidth: 1.5,
+  borderColor: 'rgba(0,122,255,0.5)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+calibrateButtonActive: {
+  backgroundColor: 'rgba(0,122,255,0.95)',
+  borderColor: 'rgba(0,180,255,0.9)',
+},
+calibrateText: {
+  color: 'white',
+  fontSize: 14,
+  fontWeight: '700',
+},
+toggleTrack: {
+  width: 36,
+  height: 20,
+  borderRadius: 10,
+  backgroundColor: 'rgba(255,255,255,0.3)',
+  justifyContent: 'center',
+  paddingHorizontal: 2,
+},
+toggleTrackActive: {
+  backgroundColor: '#4cd964',
+},
+toggleThumb: {
+  width: 16,
+  height: 16,
+  borderRadius: 8,
+  backgroundColor: 'white',
+  alignSelf: 'flex-start',
+},
+toggleThumbActive: {
+  alignSelf: 'flex-end',
+},
 
+calibrateSubText: {
+  position: 'absolute',
+  top: 105,
+  right: 20,
+  color: 'rgba(44, 41, 41, 0.8)',
+  fontSize: 14,
+  fontWeight: '500',
+  textAlign: 'right',
+},
 });
 
 export default App;
