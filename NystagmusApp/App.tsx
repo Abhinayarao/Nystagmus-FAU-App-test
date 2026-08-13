@@ -1,6 +1,6 @@
 import { launchImageLibrary } from 'react-native-image-picker';
 import React, {useEffect, useState, useRef, useCallback} from 'react';
-import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert, PermissionsAndroid, Platform, Image, Animated, PanResponder, useWindowDimensions, ScrollView, RefreshControl} from 'react-native';
+import {StyleSheet, View, Text, Dimensions, TouchableOpacity, Alert, PermissionsAndroid, Platform, Image, Animated, PanResponder, useWindowDimensions, ScrollView, RefreshControl, Modal} from 'react-native';
 import {
   Camera,
   useCameraDevice,
@@ -76,6 +76,7 @@ const torchLevelRef = useRef(1.0);
 const TORCH_LEVELS = [0.25, 0.5, 0.75, 1.0];
 const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 const [showAnnotations, setShowAnnotations] = useState(false);
+const [showUploadModal, setShowUploadModal] = useState(false);
 
 // Returns: eye distances, centering scores, iris positions
 const captureAndSend = useCallback(async () => {
@@ -215,7 +216,7 @@ const analyzeVideoAuto = useCallback(async () => {
         isSilentUploadingRef.current &&
         Date.now() - startWait < maxWaitMs
       ) {
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise<void>(resolve => setTimeout(resolve, 150));
       }
     }
 
@@ -280,57 +281,48 @@ if (!filename || !sessionIdRef.current) {
 
 // Pick video from gallery for analysis
 const pickAndAnalyzeVideo = useCallback(async () => {
-  Alert.alert(
-    'Select Video',
-    'Choose where to pick your video from',
-    [
-      {
-        text: 'Gallery',
-        onPress: async () => {
-          launchImageLibrary(
-            { mediaType: 'video', includeBase64: false },
-            async (response) => {
-              if (response.didCancel || response.errorCode) return;
-              const asset = response.assets?.[0];
-              if (!asset?.uri) return;
-              isCapturing.current = true;
-              const isMov = asset.uri.toLowerCase().includes('.mov');
-              const destPath = `${RNFS.TemporaryDirectoryPath}picked_${Date.now()}.${isMov ? 'mov' : 'mp4'}`;
-              const sourcePath = asset.uri.replace('file://', '');
-              await RNFS.copyFile(sourcePath, destPath);
-              setRecordedVideoPath(`file://${destPath}`);
-              uploadRecordingToCloud(`file://${destPath}`, true);
-            }
-          );
-        },
-      },
-      {
-        text: 'Files',
-        onPress: async () => {
-          try {
-            const result = await DocumentPicker.pickSingle({
-              type: DocumentPicker.types.video,
-            });
-            isCapturing.current = true;
-            const isMov = result.uri.toLowerCase().includes('.mov');
-            const destPath = `${RNFS.TemporaryDirectoryPath}picked_${Date.now()}.${isMov ? 'mov' : 'mp4'}`;
-            const sourcePath = result.uri.replace('file://', '');
-            await RNFS.copyFile(sourcePath, destPath);
-            setRecordedVideoPath(`file://${destPath}`);
-            uploadRecordingToCloud(`file://${destPath}`, true);
-          } catch (error) {
-            if (!DocumentPicker.isCancel(error)) {
-              Alert.alert('Error', 'Failed to pick video');
-            }
-          }
-        },
-      },
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-    ]
+  setShowUploadModal(true);
+}, []);
+
+const handleGalleryPick = useCallback(async () => {
+  setShowUploadModal(false);
+  await new Promise<void>(resolve => setTimeout(resolve, 300));
+  launchImageLibrary(
+    { mediaType: 'video', includeBase64: false },
+    async (response) => {
+      if (response.didCancel || response.errorCode) return;
+      const asset = response.assets?.[0];
+      if (!asset?.uri) return;
+      isCapturing.current = true;
+      const isMov = asset.uri.toLowerCase().includes('.mov');
+      const destPath = `${RNFS.TemporaryDirectoryPath}picked_${Date.now()}.${isMov ? 'mov' : 'mp4'}`;
+      const sourcePath = asset.uri.replace('file://', '');
+      await RNFS.copyFile(sourcePath, destPath);
+      setRecordedVideoPath(`file://${destPath}`);
+      uploadRecordingToCloud(`file://${destPath}`, true);
+    }
   );
+}, []);
+
+const handleFilesPick = useCallback(async () => {
+  setShowUploadModal(false);
+  await new Promise<void>(resolve => setTimeout(resolve, 300));
+  try {
+    const result = await DocumentPicker.pickSingle({
+      type: DocumentPicker.types.video,
+    });
+    isCapturing.current = true;
+    const isMov = result.uri.toLowerCase().includes('.mov');
+    const destPath = `${RNFS.TemporaryDirectoryPath}picked_${Date.now()}.${isMov ? 'mov' : 'mp4'}`;
+    const sourcePath = result.uri.replace('file://', '');
+    await RNFS.copyFile(sourcePath, destPath);
+    setRecordedVideoPath(`file://${destPath}`);
+    uploadRecordingToCloud(`file://${destPath}`, true);
+  } catch (error) {
+    if (!DocumentPicker.isCancel(error)) {
+      Alert.alert('Error', 'Failed to pick video');
+    }
+  }
 }, []);
 
 // Upload recording to GCS for research monitoring
@@ -887,7 +879,7 @@ if (screenAspect > frameAspect) {
     onPress={() => setShowAnnotations(prev => !prev)}
     activeOpacity={0.7}
   >
-    <Text style={styles.calibrateText}>⚙️ Calibrate</Text>
+    <Text style={styles.calibrateText}>Calibrate</Text>
     <View style={[styles.toggleTrack, showAnnotations && styles.toggleTrackActive]}>
       <View style={[styles.toggleThumb, showAnnotations && styles.toggleThumbActive]} />
     </View>
@@ -1113,6 +1105,46 @@ if (screenAspect > frameAspect) {
     )}
   </View>
 )}
+
+{/* Upload picker modal */}
+{/* Upload picker modal */}
+<Modal
+  visible={showUploadModal}
+  transparent={true}
+  animationType="fade"
+  onRequestClose={() => setShowUploadModal(false)}
+>
+  <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+    <View style={{ backgroundColor: 'rgba(25,25,25,0.97)', borderRadius: 16, padding: 24, width: 280, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)' }}>
+      <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 15, textAlign: 'center', marginBottom: 20 }}>Select video from</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 32 }}>
+        <TouchableOpacity style={{ alignItems: 'center', gap: 8 }} onPress={handleGalleryPick}>
+          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(0,122,255,0.15)', borderWidth: 0.5, borderColor: 'rgba(0,122,255,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+            <Svg width="26" height="26" viewBox="0 0 24 24">
+              <Path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" fill="rgba(0,122,255,0.9)" />
+            </Svg>
+          </View>
+          <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14 }}>Gallery</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ alignItems: 'center', gap: 8 }} onPress={handleFilesPick}>
+          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,160,0,0.15)', borderWidth: 0.5, borderColor: 'rgba(255,160,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+            <Svg width="26" height="26" viewBox="0 0 24 24">
+              <Path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" fill="rgba(255,160,0,0.9)" />
+            </Svg>
+          </View>
+          <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14 }}>Files</Text>
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity
+        style={{ marginTop: 20, padding: 12, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center' }}
+        onPress={() => setShowUploadModal(false)}
+      >
+        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
     </View>
   );
 }
