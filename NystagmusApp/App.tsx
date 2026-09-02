@@ -75,8 +75,9 @@ const [torchLevel, setTorchLevel] = useState(1.0);
 const torchLevelRef = useRef(1.0);
 const TORCH_LEVELS = [0.25, 0.5, 0.75, 1.0];
 const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-const [showAnnotations, setShowAnnotations] = useState(false);
+const [cameraMode, setCameraMode] = useState<'standard' | 'torch' | 'calibrate'>('standard');
 const [showUploadModal, setShowUploadModal] = useState(false);
+const [showModeDropdown, setShowModeDropdown] = useState(false);
 
 // Returns: eye distances, centering scores, iris positions
 const captureAndSend = useCallback(async () => {
@@ -533,16 +534,17 @@ useEffect(() => {
   }
 }, []);
 
-//Takes a photo every 500ms and sends to backend
+//Takes a photo and sends to backend only in Calibrate mode
 useEffect(() => {
   if (spvGraph) return;
   if (isAnalyzing) return;
   if (showHistory) return;
+  if (cameraMode !== 'calibrate') return;
   const interval = setInterval(() => {
     captureAndSend();
   }, 25);
   return () => clearInterval(interval);
-}, [captureAndSend, spvGraph, isAnalyzing, showHistory]);
+}, [captureAndSend, spvGraph, isAnalyzing, showHistory, cameraMode]);
 
 //Permission Check
   if (!hasPermission) {
@@ -592,7 +594,7 @@ if (screenAspect > frameAspect) {
         photo={true}
         resizeMode="cover"
         video={true}
-        {...(cameraPosition === 'back' && { torch: isRecording ? 'on' : 'off' })}
+        {...(cameraPosition === 'back' && { torch: (cameraMode === 'torch' || isRecording) ? 'on' : 'off' })}
       />
 
     {/* Onboarding overlay */}
@@ -675,10 +677,10 @@ if (screenAspect > frameAspect) {
 )}
 
       {/* Vertical crosshair line */}
-{showAnnotations && <View style={styles.verticalLine} />}
+{cameraMode === 'calibrate' && <View style={styles.verticalLine} />}
 
 {/* Horizontal crosshair line */}
-{showAnnotations && <View style={styles.horizontalLine} />}
+{cameraMode === 'calibrate' && <View style={styles.horizontalLine} />}
 
 {/* History drawer */}
 <Animated.View style={[styles.historyDrawer, {
@@ -872,20 +874,44 @@ if (screenAspect > frameAspect) {
 </>
 )}
 
-{/* Calibrate button */}
-{!showHistory && !isRecording && !isAnalyzing && !spvGraph && (
-  <TouchableOpacity
-    style={[styles.calibrateButton, showAnnotations && styles.calibrateButtonActive]}
-    onPress={() => setShowAnnotations(prev => !prev)}
-    activeOpacity={0.7}
-  >
-    <Text style={styles.calibrateText}>Calibrate</Text>
-    <View style={[styles.toggleTrack, showAnnotations && styles.toggleTrackActive]}>
-      <View style={[styles.toggleThumb, showAnnotations && styles.toggleThumbActive]} />
-    </View>
-  </TouchableOpacity>
+{/* Mode selector dropdown */}
+{!showHistory && !isAnalyzing && !spvGraph && (
+  <View style={styles.modeSelector}>
+    <TouchableOpacity
+      style={styles.modeDropdownHeader}
+      onPress={() => setShowModeDropdown(prev => !prev)}
+      activeOpacity={0.8}
+    >
+      <Text style={styles.modeDropdownLabel}>
+        {cameraMode === 'standard' ? 'Standard' : cameraMode === 'torch' ? 'Torch' : 'Calibrate'}
+      </Text>
+      <Text style={styles.modeDropdownChevron}>{showModeDropdown ? '▲' : '▼'}</Text>
+    </TouchableOpacity>
+    {showModeDropdown && (
+      <View style={styles.modeDropdownItems}>
+        {(['standard', 'torch', 'calibrate'] as const).map((mode) => (
+          <TouchableOpacity
+              key={mode}
+              style={[
+              styles.modeDropdownItem,
+              cameraMode === mode && mode !== 'calibrate' && styles.modeDropdownItemActive,
+              cameraMode === mode && mode === 'calibrate' && styles.modeDropdownItemActiveCalibrate,
+            ]}
+            onPress={() => {
+              setCameraMode(mode);
+              setShowModeDropdown(false);
+            }}
+          >
+            <Text style={[styles.modeDropdownItemText, cameraMode === mode && styles.modeDropdownItemTextActive]}>
+              {mode === 'standard' ? 'Standard' : mode === 'torch' ? 'Torch' : 'Calibrate'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    )}
+  </View>
 )}
-{showAnnotations && !showHistory && !isRecording && !isAnalyzing && !spvGraph && (
+{cameraMode === 'calibrate' && !showHistory && !isAnalyzing && !spvGraph && (
   <Text style={styles.calibrateSubText}>Research version for {'\n'} accurate recording</Text>
 )}
 {/* Upload video button */}
@@ -1024,7 +1050,7 @@ if (screenAspect > frameAspect) {
 )}
 
 {/* Eye and iris overlays */}
-{showAnnotations && eyeData && eyeData.face_detected && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
+{cameraMode === 'calibrate' && eyeData && eyeData.face_detected && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
   <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
     {/* Left eye polygon */}
     <Polygon
@@ -1082,7 +1108,7 @@ if (screenAspect > frameAspect) {
 
 
 {/* Eye distance display */}
-{showAnnotations && eyeData && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
+{cameraMode === 'calibrate' && eyeData && !spvGraph && !isAnalyzing && !recordedVideoPath && !showHistory && (
   <View style={styles.infoBox}>
     <Text style={[styles.infoText, {color: eyeData.face_detected ? 'green' : 'red', fontWeight: 'bold'}]}>
       {eyeData.face_detected ? 'Face: DETECTED' : 'Face: NOT DETECTED'}
@@ -1699,60 +1725,66 @@ torchPercent: {
   fontSize: 9,
   fontWeight: '500',
 },
-calibrateButton: {
+modeSelector: {
   position: 'absolute',
   top: 60,
-  right: 20,
-  backgroundColor: 'rgba(0,0,0,0.65)',
+  right: 10,
+  minWidth: 130,
+},
+modeDropdownHeader: {
+  backgroundColor: 'rgba(0,0,0,0.6)',
+  borderWidth: 0.5,
+  borderColor: 'rgba(255,255,255,0.2)',
+  borderRadius: 10,
   paddingHorizontal: 12,
   paddingVertical: 8,
-  borderRadius: 12,
-  borderWidth: 1.5,
-  borderColor: 'rgba(0,122,255,0.5)',
   flexDirection: 'row',
   alignItems: 'center',
+  justifyContent: 'space-between',
   gap: 8,
 },
-calibrateButtonActive: {
-  backgroundColor: 'rgba(0,122,255,0.95)',
-  borderColor: 'rgba(0,180,255,0.9)',
-},
-calibrateText: {
+modeDropdownLabel: {
   color: 'white',
   fontSize: 14,
-  fontWeight: '700',
+  fontWeight: '600',
 },
-toggleTrack: {
-  width: 36,
-  height: 20,
+modeDropdownChevron: {
+  color: 'rgba(255,255,255,0.5)',
+  fontSize: 10,
+},
+modeDropdownItems: {
+  backgroundColor: 'rgba(0,0,0,0.8)',
+  borderWidth: 0.5,
+  borderColor: 'rgba(255,255,255,0.15)',
   borderRadius: 10,
-  backgroundColor: 'rgba(255,255,255,0.3)',
-  justifyContent: 'center',
-  paddingHorizontal: 2,
+  marginTop: 4,
+  overflow: 'hidden',
 },
-toggleTrackActive: {
-  backgroundColor: '#4cd964',
+modeDropdownItem: {
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  borderBottomWidth: 0.5,
+  borderBottomColor: 'rgba(255,255,255,0.06)',
 },
-toggleThumb: {
-  width: 16,
-  height: 16,
-  borderRadius: 8,
-  backgroundColor: 'white',
-  alignSelf: 'flex-start',
+modeDropdownItemActive: {
+  backgroundColor: 'rgba(0,122,255,0.2)',
 },
-toggleThumbActive: {
-  alignSelf: 'flex-end',
+modeDropdownItemActiveCalibrate: {
+  backgroundColor: 'rgba(100,60,200,0.2)',
 },
-
-calibrateSubText: {
-  position: 'absolute',
-  top: 105,
-  right: 20,
-  color: 'rgba(44, 41, 41, 0.8)',
-  fontSize: 14,
-  fontWeight: '500',
-  textAlign: 'right',
+modeDropdownItemText: {
+  color: 'rgba(255,255,255,0.6)',
+  fontSize: 13,
 },
+modeDropdownItemTextActive: {
+  color: 'rgba(0,122,255,0.9)',
+  fontWeight: '600',
+},
+modeButton: {},
+modeButtonActive: {},
+modeButtonActiveCalibrate: {},
+modeButtonText: {},
+modeButtonTextActive: {},
 });
 
 export default App;
