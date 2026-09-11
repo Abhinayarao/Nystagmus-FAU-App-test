@@ -594,7 +594,7 @@ if (screenAspect > frameAspect) {
         photo={true}
         resizeMode="cover"
         video={true}
-        {...(cameraPosition === 'back' && { torch: (cameraMode === 'torch' || isRecording) ? 'on' : 'off' })}
+        {...(cameraPosition === 'back' && { torch: cameraMode === 'torch' ? 'on' : 'off' })}
       />
 
     {/* Onboarding overlay */}
