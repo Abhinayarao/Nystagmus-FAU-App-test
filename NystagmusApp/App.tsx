@@ -537,6 +537,13 @@ useEffect(() => {
   }
 }, []);
 
+useEffect(() => {
+  if (isRecording && cameraMode !== 'torch') {
+    const timer = setTimeout(() => TorchPlugin?.setTorchLevel(0), 300);
+    return () => clearTimeout(timer);
+  }
+}, [isRecording, cameraMode]);
+
 //Takes a photo and sends to backend only in Calibrate mode
 useEffect(() => {
   if (spvGraph) return;
@@ -828,7 +835,7 @@ if (screenAspect > frameAspect) {
 )}
 
 {/* Torch level */}
-{!showHistory && isRecording && cameraPosition === 'back' && (
+{!showHistory && isRecording && cameraPosition === 'back' && cameraMode === 'torch' && (
   <TouchableOpacity
     style={styles.torchSliderContainer}
     onPress={() => {
