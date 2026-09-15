@@ -112,6 +112,9 @@ setEyeData(data);
 // Start video recording
 const startRecording = useCallback(() => {
   if (camera.current == null) return;
+  if (cameraMode !== 'torch') {
+    TorchPlugin?.setTorchLevel(0);
+  }
   isCapturing.current = true;
   setIsRecording(true);
   camera.current.startRecording({
@@ -132,7 +135,7 @@ const startRecording = useCallback(() => {
       setIsRecording(false);
     },
   });
-}, []);
+}, [cameraMode]);
 
 // Delete selected items from history
 const deleteSelectedFromHistory = useCallback(async () => {
